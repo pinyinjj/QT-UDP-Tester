@@ -135,33 +135,45 @@ class FontAdjustableTextEdit(QWidget):
         self.current_font_size = 13
         setFont(self.text_edit, self.current_font_size, QFont.Monospace)
         self.layout.addWidget(self.text_edit)
-        self.btn_container = QWidget(self.text_edit)
+        
+        # 按钮容器父对象改为 self (容器部件)
+        self.btn_container = QWidget(self)
         self.btn_layout = QHBoxLayout(self.btn_container)
-        self.btn_layout.setContentsMargins(0, 0, 5, 0)
-        self.btn_layout.setSpacing(4)
+        self.btn_layout.setContentsMargins(0, 0, 0, 0)
+        self.btn_layout.setSpacing(2) # 极窄间距
+        
         style = """
-            TransparentToolButton { border: 1px solid #dcdcdc; border-radius: 4px; background-color: rgba(255, 255, 255, 0.8); }
-            TransparentToolButton:hover { background-color: #f0f0f0; border: 1px solid #0078d4; }
+            TransparentToolButton { 
+                border: 1px solid #dcdcdc; 
+                border-radius: 4px; 
+                background-color: rgba(255, 255, 255, 0.9); 
+            }
+            TransparentToolButton:hover { 
+                background-color: #f0f0f0; 
+                border: 1px solid #0078d4; 
+            }
         """
-        self.zoom_out_btn = TransparentToolButton(FIF.REMOVE, self.btn_container)
         self.zoom_in_btn = TransparentToolButton(FIF.ADD, self.btn_container)
-        for btn in [self.zoom_out_btn, self.zoom_in_btn]:
-            btn.setFixedSize(28, 28)
-            btn.setIconSize(QSize(14, 14))
+        self.zoom_out_btn = TransparentToolButton(FIF.REMOVE, self.btn_container)
+        for btn in [self.zoom_in_btn, self.zoom_out_btn]:
+            btn.setFixedSize(26, 26) # 稍微缩小一点以适应紧凑布局
+            btn.setIconSize(QSize(12, 12))
             btn.setStyleSheet(style)
             self.btn_layout.addWidget(btn)
+        
+        self.btn_container.setFixedSize(54, 26) # 强制容器尺寸：26*2 + 2(spacing)
         self.zoom_in_btn.clicked.connect(lambda: self.adjust_font(1))
         self.zoom_out_btn.clicked.connect(lambda: self.adjust_font(-1))
-        self.text_edit.installEventFilter(self)
 
     def adjust_font(self, delta):
         self.current_font_size = max(8, min(48, self.current_font_size + delta))
         setFont(self.text_edit, self.current_font_size, QFont.Monospace)
 
-    def eventFilter(self, obj, event):
-        if obj == self.text_edit and event.type() == QEvent.Resize:
-            self.btn_container.move(self.text_edit.width() - self.btn_container.width() - 12, 8)
-        return super().eventFilter(obj, event)
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 绝对贴合右上角：右边距 2px，顶边距 2px
+        self.btn_container.move(self.width() - self.btn_container.width() - 2, 2)
+        self.btn_container.raise_()
 
 class HomeInterface(SingleDirectionScrollArea):
     def __init__(self, parent=None):
