@@ -10,3 +10,8 @@ A modern UDP tool with Fluent UI, supporting broadcast sending (Hz) and high-pre
 - **Author**: Zed Liu
 - **Message**: Update GEMINI.md
 
+### Commit Update: 2026-03-25 17:14:38
+- **Commit**: 7682100
+- **Author**: Zed Liu
+- **Message**: add
+
