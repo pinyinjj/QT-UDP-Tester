@@ -7,20 +7,22 @@ from datetime import datetime
 
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize, QPoint, QEvent, QPropertyAnimation, QEasingCurve
 from PyQt5.QtGui import QFont, QTextCursor, QIcon, QColor
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QTableWidgetItem
 
 from qfluentwidgets import (
     LineEdit, SpinBox, DoubleSpinBox, PrimaryPushButton, 
     PushButton, TextEdit, SubtitleLabel, CaptionLabel, StrongBodyLabel,
     CardWidget, FluentIcon as FIF, setTheme, Theme, setFont, InfoBar, InfoBarPosition,
     setThemeColor, FluentWindow, SingleDirectionScrollArea, TitleLabel,
-    PrimaryToolButton, ToolButton, TransparentToolButton, FlowLayout, CheckBox
+    PrimaryToolButton, ToolButton, TransparentToolButton, FlowLayout, CheckBox,
+    TableWidget
 )
 
-CONFIG_FILE = "filters.json"
+CONFIG_FILE = "config.json"
 
 class ReceiverThread(QThread):
     packet_received = pyqtSignal(str, str, int, bytes)
+    error_occurred = pyqtSignal(str)
 
     def __init__(self, port):
         super().__init__()
@@ -28,13 +30,20 @@ class ReceiverThread(QThread):
         self.running = True
 
     def run(self):
+        sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             if hasattr(socket, 'SO_REUSEPORT'):
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            sock.bind(('', self.port))
+            
+            try:
+                sock.bind(('', self.port))
+            except OSError as e:
+                self.error_occurred.emit(f"Failed to bind port {self.port}: {str(e)}")
+                return
+
             sock.settimeout(0.5)
             while self.running:
                 try:
@@ -45,9 +54,11 @@ class ReceiverThread(QThread):
                     continue
                 except:
                     break
-            sock.close()
-        except:
-            pass
+        except Exception as e:
+            self.error_occurred.emit(f"Receiver error: {str(e)}")
+        finally:
+            if sock:
+                sock.close()
 
     def stop(self):
         self.running = False
@@ -124,7 +135,71 @@ class AnimatedTagContainer(QWidget):
         
         self.animation.start()
 
+class FontAdjustableTableWidget(QWidget):
+    fontSizeChanged = pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.table = TableWidget(self)
+        self.table.setWordWrap(False)
+        self.table.verticalHeader().hide()
+        
+        self.current_font_size = 13
+        setFont(self.table, self.current_font_size, QFont.Monospace)
+        self.layout.addWidget(self.table)
+        
+        # 按钮容器
+        self.btn_container = QWidget(self)
+        self.btn_layout = QHBoxLayout(self.btn_container)
+        self.btn_layout.setContentsMargins(0, 0, 0, 0)
+        self.btn_layout.setSpacing(2)
+        
+        style = """
+            TransparentToolButton { 
+                border: 1px solid #dcdcdc; 
+                border-radius: 4px; 
+                background-color: rgba(255, 255, 255, 0.9); 
+            }
+            TransparentToolButton:hover { 
+                background-color: #f0f0f0; 
+                border: 1px solid #0078d4; 
+            }
+        """
+        self.zoom_in_btn = TransparentToolButton(FIF.ADD, self.btn_container)
+        self.zoom_out_btn = TransparentToolButton(FIF.REMOVE, self.btn_container)
+        for btn in [self.zoom_in_btn, self.zoom_out_btn]:
+            btn.setFixedSize(26, 26)
+            btn.setIconSize(QSize(12, 12))
+            btn.setStyleSheet(style)
+            self.btn_layout.addWidget(btn)
+        
+        self.btn_container.setFixedSize(54, 26)
+        self.zoom_in_btn.clicked.connect(lambda: self.adjust_font(1))
+        self.zoom_out_btn.clicked.connect(lambda: self.adjust_font(-1))
+
+    def adjust_font(self, delta):
+        self.current_font_size = max(8, min(48, self.current_font_size + delta))
+        setFont(self.table, self.current_font_size, QFont.Monospace)
+        # 表格需要手动更新行高以适应字体
+        self.table.verticalHeader().setDefaultSectionSize(int(self.current_font_size * 1.8))
+        self.fontSizeChanged.emit(self.current_font_size)
+
+    def set_font_size(self, size):
+        self.current_font_size = max(8, min(48, size))
+        setFont(self.table, self.current_font_size, QFont.Monospace)
+        self.table.verticalHeader().setDefaultSectionSize(int(self.current_font_size * 1.8))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.btn_container.move(self.width() - self.btn_container.width() - 20, 2)
+        self.btn_container.raise_()
+
 class FontAdjustableTextEdit(QWidget):
+    fontSizeChanged = pyqtSignal(int)
+
     def __init__(self, parent=None, is_readonly=False, placeholder=""):
         super().__init__(parent=parent)
         self.layout = QVBoxLayout(self)
@@ -168,6 +243,11 @@ class FontAdjustableTextEdit(QWidget):
     def adjust_font(self, delta):
         self.current_font_size = max(8, min(48, self.current_font_size + delta))
         setFont(self.text_edit, self.current_font_size, QFont.Monospace)
+        self.fontSizeChanged.emit(self.current_font_size)
+
+    def set_font_size(self, size):
+        self.current_font_size = max(8, min(48, size))
+        setFont(self.text_edit, self.current_font_size, QFont.Monospace)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -187,7 +267,12 @@ class HomeInterface(SingleDirectionScrollArea):
         self.setObjectName("homeInterface")
         self.view.setObjectName("view")
         self.setStyleSheet("#view, #homeInterface { background-color: transparent; border: none; }")
-        self.load_filters()
+        
+        # 连接字体变化信号
+        self.payload_container.fontSizeChanged.connect(self.save_config)
+        self.log_container.fontSizeChanged.connect(self.save_config)
+        
+        self.load_config()
 
     def setup_ui(self):
         self.vBoxLayout.setContentsMargins(36, 20, 36, 36)
@@ -216,15 +301,24 @@ class HomeInterface(SingleDirectionScrollArea):
         cfg_layout.addWidget(CaptionLabel("Freq"))
         cfg_layout.addWidget(self.send_freq, 1)
         s_layout.addLayout(cfg_layout)
+        
         s_layout.addWidget(StrongBodyLabel("Message Payload"))
+
         self.payload_container = FontAdjustableTextEdit(self.sender_card)
         self.payload_container.text_edit.setPlainText(r'{"cmd":"ping","data":0}')
         self.payload_container.setFixedHeight(140)
         s_layout.addWidget(self.payload_container)
+        
         btn_layout = QHBoxLayout()
+        self.format_btn = PushButton(FIF.CODE, "Format JSON", self.sender_card)
+        self.format_btn.clicked.connect(self.toggle_payload_format)
+        
         self.send_once_btn = PushButton(FIF.SEND, "Send Now", self.sender_card)
         self.start_send_btn = PrimaryPushButton(FIF.PLAY, "Start Loop", self.sender_card)
+        
         btn_layout.addStretch()
+        btn_layout.addWidget(self.format_btn)
+        btn_layout.addSpacing(8)
         btn_layout.addWidget(self.send_once_btn)
         btn_layout.addWidget(self.start_send_btn)
         s_layout.addLayout(btn_layout)
@@ -236,44 +330,84 @@ class HomeInterface(SingleDirectionScrollArea):
         r_layout.setContentsMargins(20, 16, 20, 16)
         r_layout.setSpacing(12)
         r_layout.addWidget(SubtitleLabel("Real-time Monitor"))
+        
+        # 合并后的配置行
         r_cfg = QHBoxLayout()
         self.listen_port = SpinBox(self.receiver_card)
         self.listen_port.setRange(1, 65535)
         self.listen_port.setValue(5005)
-        self.start_recv_btn = PrimaryPushButton(FIF.WIFI, "Start Listening", self.receiver_card)
-        r_cfg.addWidget(CaptionLabel("Listen Port"))
-        r_cfg.addWidget(self.listen_port)
-        r_cfg.addStretch()
-        r_cfg.addWidget(self.start_recv_btn)
-        r_layout.addLayout(r_cfg)
-
-        filter_box = QHBoxLayout()
+        self.listen_port.setFixedWidth(130) # 调大宽度以确保显示
+        
         self.filter_input = LineEdit(self.receiver_card)
         self.filter_input.setPlaceholderText("Add filter keyword...")
         self.add_filter_btn = PrimaryToolButton(FIF.ADD, self.receiver_card)
         self.add_filter_btn.clicked.connect(self.add_filter_tag)
         self.filter_input.returnPressed.connect(self.add_filter_tag)
-        filter_box.addWidget(CaptionLabel("Filters"))
-        filter_box.addWidget(self.filter_input)
-        filter_box.addWidget(self.add_filter_btn)
-        r_layout.addLayout(filter_box)
+        
+        self.start_recv_btn = PrimaryPushButton(FIF.WIFI, "Start Listening", self.receiver_card)
+        self.start_recv_btn.setFixedWidth(160) # 固定右侧按钮宽度
+        
+        r_cfg.addWidget(CaptionLabel("Listen Port"))
+        r_cfg.addWidget(self.listen_port)
+        r_cfg.addSpacing(20)
+        r_cfg.addWidget(CaptionLabel("Filters"))
+        r_cfg.addWidget(self.filter_input, 1) # 过滤器输入框拉伸占据剩余空间
+        r_cfg.addWidget(self.add_filter_btn)
+        r_cfg.addSpacing(15)
+        r_cfg.addWidget(self.start_recv_btn)
+        r_layout.addLayout(r_cfg)
         
         # 使用动画容器
         self.tag_container = AnimatedTagContainer(self.receiver_card)
         r_layout.addWidget(self.tag_container)
 
-        self.log_container = FontAdjustableTextEdit(self.receiver_card, is_readonly=True, placeholder="Logs will appear here...")
+        self.log_container = FontAdjustableTableWidget(self.receiver_card)
         self.log_container.setFixedHeight(350)
+        
+        # 表格列配置
+        self.log_container.table.setColumnCount(4)
+        self.log_container.table.setHorizontalHeaderLabels(["Time", "Source", "Port", "Payload"])
+        self.log_container.table.horizontalHeader().setStretchLastSection(True)
+        self.log_container.table.setEditTriggers(TableWidget.NoEditTriggers)
+        self.log_container.table.setAlternatingRowColors(True)
+        
+        # 列宽调整
+        self.log_container.table.setColumnWidth(0, 140)
+        self.log_container.table.setColumnWidth(1, 140)
+        self.log_container.table.setColumnWidth(2, 80)
+        
         r_layout.addWidget(self.log_container)
         
         r_ctrl = QHBoxLayout()
         self.clear_btn = PushButton(FIF.DELETE, "Clear Logs", self.receiver_card)
+        self.clear_btn.clicked.connect(lambda: self.log_container.table.setRowCount(0))
         r_ctrl.addStretch()
         r_ctrl.addWidget(self.clear_btn)
         r_layout.addLayout(r_ctrl)
         self.vBoxLayout.addWidget(self.receiver_card)
 
-    def add_filter_tag(self, text=None):
+    def toggle_payload_format(self):
+        try:
+            text = self.payload_container.text_edit.toPlainText().strip()
+            if not text: return
+            
+            # Detect existing structure
+            obj = json.loads(text)
+            # If text contains more than one line, we assume it is formatted
+            if '\n' in text:
+                # To compact
+                new_text = json.dumps(obj, separators=(',', ':'), ensure_ascii=False)
+            else:
+                # To pretty print
+                new_text = json.dumps(obj, indent=4, ensure_ascii=False)
+            
+            self.payload_container.text_edit.setPlainText(new_text)
+        except Exception:
+            win = self.window()
+            if hasattr(win, "show_toast"):
+                win.show_toast("JSON Error", "Invalid JSON format in payload", is_error=True)
+
+    def add_filter_tag(self, text=None, save=True):
         if text is None or isinstance(text, bool):
             text = self.filter_input.text().strip()
         if not text: return
@@ -288,7 +422,8 @@ class HomeInterface(SingleDirectionScrollArea):
         # 平滑展开
         if len(self.filter_tags) == 1:
             self.tag_container.toggle(True)
-        self.save_filters()
+        if save:
+            self.save_config()
 
     def remove_filter_tag(self, text):
         for tag in self.filter_tags[:]:
@@ -301,22 +436,51 @@ class HomeInterface(SingleDirectionScrollArea):
         # 平滑折叠
         if not self.filter_tags:
             self.tag_container.toggle(False)
-        self.save_filters()
+        self.save_config()
 
-    def save_filters(self):
-        filters = [tag.filter_text for tag in self.filter_tags]
+    def save_config(self):
+        config = {
+            "filters": [tag.filter_text for tag in self.filter_tags],
+            "payload_font_size": self.payload_container.current_font_size,
+            "log_font_size": self.log_container.current_font_size
+        }
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(filters, f)
+                json.dump(config, f)
         except: pass
 
-    def load_filters(self):
+    def load_config(self):
+        # 尝试从旧的 filters.json 迁移
+        old_config_file = "filters.json"
+        if not os.path.exists(CONFIG_FILE) and os.path.exists(old_config_file):
+            try:
+                with open(old_config_file, "r", encoding="utf-8") as f:
+                    old_filters = json.load(f)
+                config = {"filters": old_filters, "payload_font_size": 13, "log_font_size": 13}
+                with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(config, f)
+                os.remove(old_config_file)
+            except: pass
+
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    filters = json.load(f)
+                    config = json.load(f)
+                    
+                    if isinstance(config, list): # 兼容旧格式直接更名的情况
+                        filters = config
+                        payload_font_size = 13
+                        log_font_size = 13
+                    else:
+                        filters = config.get("filters", [])
+                        payload_font_size = config.get("payload_font_size", 13)
+                        log_font_size = config.get("log_font_size", 13)
+                        
                     for text in filters:
-                        self.add_filter_tag(text)
+                        self.add_filter_tag(text, save=False)
+                    
+                    self.payload_container.set_font_size(payload_font_size)
+                    self.log_container.set_font_size(log_font_size)
             except: pass
 
 class UDPToolApp(FluentWindow):
@@ -334,7 +498,6 @@ class UDPToolApp(FluentWindow):
         hi.send_once_btn.clicked.connect(self.send_packet)
         hi.start_send_btn.clicked.connect(self.toggle_send_loop)
         hi.start_recv_btn.clicked.connect(self.toggle_receiver)
-        hi.clear_btn.clicked.connect(hi.log_container.text_edit.clear)
         hi.send_freq.valueChanged.connect(self.update_live_timer)
         self.addSubInterface(self.home_interface, FIF.HOME, "Control Center")
         
@@ -354,7 +517,7 @@ class UDPToolApp(FluentWindow):
     def show_toast(self, title, content, is_error=False):
         func = InfoBar.error if is_error else InfoBar.success
         func(title=title, content=content, orient=Qt.Horizontal, 
-             isClosable=True, position=InfoBarPosition.TOP, duration=1500, parent=self)
+             isClosable=True, position=InfoBarPosition.TOP_RIGHT, duration=1500, parent=self)
 
     def update_live_timer(self):
         if self.send_timer.isActive():
@@ -380,14 +543,26 @@ class UDPToolApp(FluentWindow):
         else:
             self.recv_thread = ReceiverThread(self.home_interface.listen_port.value())
             self.recv_thread.packet_received.connect(self.on_packet_received)
+            self.recv_thread.error_occurred.connect(self.on_receiver_error)
             self.recv_thread.start()
             btn.setText("Stop Listening")
             btn.setIcon(FIF.CLOSE)
 
+    def on_receiver_error(self, error_msg):
+        self.show_toast("Receiver Error", error_msg, is_error=True)
+        # 重置按钮状态
+        btn = self.home_interface.start_recv_btn
+        btn.setText("Start Listening")
+        btn.setIcon(FIF.WIFI)
+
     def on_packet_received(self, timestamp, ip, port, data):
-        try: text = data.decode('utf-8', errors='replace')
-        except: text = data.hex(' ')
-        active_filters = [tag.filter_text for tag in self.home_interface.filter_tags if tag.isChecked()]
+        try: 
+            text = data.decode('utf-8', errors='replace').strip()
+        except: 
+            text = data.hex(' ')
+            
+        # 修正: 使用 tag.checkbox.isChecked()
+        active_filters = [tag.filter_text for tag in self.home_interface.filter_tags if tag.checkbox.isChecked()]
         if active_filters:
             match = False
             for f in active_filters:
@@ -395,8 +570,20 @@ class UDPToolApp(FluentWindow):
                     match = True
                     break
             if not match: return
-        self.home_interface.log_container.text_edit.insertPlainText(f"[{timestamp}] {ip}:{port} → {text}\n")
-        self.home_interface.log_container.text_edit.moveCursor(QTextCursor.End)
+            
+        # 添加到表格
+        table = self.home_interface.log_container.table
+        row = table.rowCount()
+        table.insertRow(row)
+        
+        # 默认使用不可编辑的 QTableWidgetItem
+        table.setItem(row, 0, QTableWidgetItem(timestamp))
+        table.setItem(row, 1, QTableWidgetItem(ip))
+        table.setItem(row, 2, QTableWidgetItem(str(port)))
+        table.setItem(row, 3, QTableWidgetItem(text))
+        
+        # 自动滚动到底部
+        table.scrollToBottom()
 
 if __name__ == '__main__':
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
