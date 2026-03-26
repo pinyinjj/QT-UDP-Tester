@@ -1,10 +1,8 @@
-name: Build and Package
+name: Build and Release
 
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+    branches: [ build-release ]
   workflow_dispatch:
 
 jobs:
@@ -12,38 +10,74 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
-    
+      with:
+        fetch-depth: 0
+
+    - name: Get latest tag
+      id: get_version
+      run: |
+        $tags = git tag --sort=-v:refname | Select-String -Pattern '^v\d+\.\d+\.\d+$' | Select-Object -First 1
+        if ($tags) {
+          $version = $tags -replace '^v', ''
+          $parts = $version.Split('.')
+          $newPatch = [int]$parts[2] + 1
+          $newVersion = "v$($parts[0]).$($parts[1]).$newPatch"
+        } else {
+          $newVersion = "v1.0.0"
+        }
+        echo "VERSION=$newVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        echo "VERSION_NUMBER=$newVersion -replace '^v', ''" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
         pip install -r requirements.txt
-        
+
     - name: Build EXE
       run: |
         pyinstaller --noconsole --onefile --name "QT-UDP-Tester" --hidden-import PyQt5.sip udp_tool_gui.py
-        
-    - name: Upload EXE
+
+    - name: Upload EXE Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: QT-UDP-Tester-Windows
+        name: windows-exe
         path: dist/QT-UDP-Tester.exe
 
   build-linux:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
+      with:
+        fetch-depth: 0
+
+    - name: Get latest tag
+      id: get_version
+      run: |
+        latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+        if [ -n "$latest_tag" ]; then
+          version="${latest_tag#v}"
+          major=$(echo $version | cut -d. -f1)
+          minor=$(echo $version | cut -d. -f2)
+          patch=$(echo $version | cut -d. -f3)
+          new_patch=$((patch + 1))
+          new_version="v${major}.${minor}.${new_patch}"
+        else
+          new_version="v1.0.0"
+        fi
+        echo "VERSION=$new_version" >> $GITHUB_OUTPUT
+        echo "VERSION_NUMBER=$new_version" >> $GITHUB_OUTPUT
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-        
+
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -51,29 +85,29 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller
         pip install -r requirements.txt
-        
+
     - name: Build Binary
       run: |
         pyinstaller --noconsole --onefile --name "qt-udp-tester" --hidden-import PyQt5.sip udp_tool_gui.py
-        
+
     - name: Create DEB Package
       run: |
         mkdir -p package/usr/bin
         mkdir -p package/usr/share/applications
         mkdir -p package/DEBIAN
-        
+
         cp dist/qt-udp-tester package/usr/bin/
-        
+
         cat <<EOF > package/DEBIAN/control
         Package: qt-udp-tester
-        Version: 1.0.0
+        Version: ${{ needs.get_version.outputs.VERSION_NUMBER || '1.0.0' }}
         Section: utils
         Priority: optional
         Architecture: amd64
         Maintainer: Gemini CLI
         Description: A modern UDP tool with Fluent UI
         EOF
-        
+
         cat <<EOF > package/usr/share/applications/qt-udp-tester.desktop
         [Desktop Entry]
         Name=QT-UDP-Tester
@@ -82,12 +116,84 @@ jobs:
         Icon=utilities-terminal
         Categories=Development;
         EOF
-        
+
         chmod +x package/usr/bin/qt-udp-tester
         dpkg-deb --build package qt-udp-tester.deb
-        
-    - name: Upload DEB
+
+    - name: Upload DEB Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: QT-UDP-Tester-Linux
+        name: linux-deb
         path: qt-udp-tester.deb
+
+  create-release:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Get next version
+      id: get_version
+      run: |
+        latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+        if [ -n "$latest_tag" ]; then
+          version="${latest_tag#v}"
+          major=$(echo $version | cut -d. -f1)
+          minor=$(echo $version | cut -d. -f2)
+          patch=$(echo $version | cut -d. -f3)
+          new_patch=$((patch + 1))
+          new_version="v${major}.${minor}.${new_patch}"
+        else
+          new_version="v1.0.0"
+        fi
+        echo "VERSION=$new_version" >> $GITHUB_OUTPUT
+        echo "VERSION_NUMBER=$new_version" >> $GITHUB_OUTPUT
+
+    - name: Download Windows Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-exe
+        path: release-assets
+
+    - name: Download Linux Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: linux-deb
+        path: release-assets
+
+    - name: Rename assets
+      run: |
+        mv release-assets/QT-UDP-Tester.exe "release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Windows.exe"
+        mv release-assets/qt-udp-tester.deb "release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb"
+
+    - name: Create Tag
+      run: |
+        git tag ${{ steps.get_version.outputs.VERSION }}
+        git push origin ${{ steps.get_version.outputs.VERSION }}
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag: ${{ steps.get_version.outputs.VERSION }}
+        name: ${{ steps.get_version.outputs.VERSION }}
+        files: |
+          release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Windows.exe
+          release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb
+        body: |
+          ## 🚀 New Release: ${{ steps.get_version.outputs.VERSION }}
+
+          ### Features
+          - **SQLite Storage**: Secure database for protocols.
+          - **Modern UI**: Enhanced Fluent Design with draggable payload height.
+          - **Protocol Library**: Multi-field editing and quick-send functionality.
+          - **Smart Logs**: Column-formatted logs with click-to-copy Payload.
+
+          ### Installation
+          - **Windows**: Download and run the `.exe` file.
+          - **Linux**: Install using `sudo dpkg -i QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb`.
+        draft: false
+        prerelease: false
