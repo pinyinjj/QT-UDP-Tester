@@ -10,3 +10,8 @@ A modern UDP tool with Fluent UI, supporting broadcast sending (Hz) and high-pre
     - Optimized UI layout: combined receiver settings into a single row, fixed button text truncation.
     - Enhanced error handling for UDP port binding failures.
     - Fixed dependencies in `requirements.txt`.
+### Commit Update: 2026-03-26 11:03:21
+- **Commit**: c979405
+- **Author**: Zed Liu
+- **Message**: feat: enhance UDP tool with persistent config, TableWidget logs, and JSON formatting
+
