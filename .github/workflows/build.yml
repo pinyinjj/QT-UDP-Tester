@@ -42,13 +42,14 @@ jobs:
 
     - name: Download UPX
       run: |
-        Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v3.96/upx-3.96-win64.zip" -OutFile upx.zip
-        Expand-Archive upx.zip -DestinationPath $env:TEMP\upx
-        echo "UPX_DIR=$env:TEMP\upx" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        New-Item -ItemType Directory -Force -Path $env:TEMP\upx
+        Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v3.96/upx-3.96-win64.zip" -OutFile $env:TEMP\upx.zip
+        Expand-Archive -Path $env:TEMP\upx.zip -DestinationPath $env:TEMP\upx -Force
+        Remove-Item $env:TEMP\upx.zip
 
     - name: Build EXE
       run: |
-        pyinstaller --noconsole --onefile --name "QT-UDP-Tester" --hidden-import PyQt5.sip --upx-dir=$env:TEMP\upx udp_tool_gui.py
+        pyinstaller --noconsole --onefile --name "QT-UDP-Tester" --hidden-import PyQt5.sip --upx-dir=$env:TEMP\upx\upx-3.96-win64 udp_tool_gui.py
 
     - name: Upload EXE Artifact
       uses: actions/upload-artifact@v4
