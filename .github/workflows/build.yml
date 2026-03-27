@@ -218,21 +218,36 @@ jobs:
           commits=$(git log $last_tag..HEAD --oneline)
         fi
 
-        # Convert commits to changelog format
-        changelog=""
-        while IFS= read -r line; do
-          # Skip merge commits and initial commits
-          if echo "$line" | grep -qE "^[0-9a-f]+ Merge"; then continue; fi
-          if echo "$line" | grep -qE "^[0-9a-f]+ initial"; then continue; fi
+        # Write body to file (multiline support)
+        {
+          echo "## 🚀 New Release: ${{ steps.get_version.outputs.VERSION }}"
+          echo ""
+          echo "### Changes"
+          while IFS= read -r line; do
+            if echo "$line" | grep -qE "^[0-9a-f]+ Merge"; then continue; fi
+            if echo "$line" | grep -qE "^[0-9a-f]+ initial"; then continue; fi
+            msg=$(echo "$line" | sed 's/^[0-9a-f]* //')
+            msg=$(echo "$msg" | sed 's/./\U&/')
+            echo "- $msg"
+          done <<< "$commits"
+          echo ""
+          echo "### Installation"
+          echo "- **Windows**: Download and run the \`.exe\` file."
+          echo "- **Linux**: Install using \`sudo dpkg -i QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb\`."
+        } > release-body.md
 
-          # Extract message after commit hash
-          msg=$(echo "$line" | sed 's/^[0-9a-f]* //')
-          # Capitalize first letter
-          msg=$(echo "$msg" | sed 's/./\U&/')
-          changelog="$changelog - $msg\n"
-        done <<< "$commits"
-
-        echo "CHANGELOG=$changelog" >> $GITHUB_OUTPUT
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        name: ${{ steps.get_version.outputs.VERSION }}
+        files: |
+          release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Windows.exe
+          release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb
+        body_path: release-body.md
+        draft: false
+        prerelease: false
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
