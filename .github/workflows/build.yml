@@ -167,6 +167,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        fetch-tags: true
 
     - name: Get next version
       id: get_version
@@ -210,31 +211,21 @@ jobs:
     - name: Generate changelog
       id: changelog
       run: |
-        # Debug: show recent commits
-        echo "=== Debug info ==="
-        echo "Recent 10 commits on this branch:"
-        git log --oneline -10
-        echo ""
-
-        # Get all tags sorted by version
+        # Get all tags
         tags=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$')
-        echo "Tags found:"
-        echo "$tags"
-        echo ""
+        echo "Tags: $tags"
 
-        # Get previous tag (second in list, first is the one we'll create)
-        last_tag=$(echo "$tags" | sed -n '2p')
+        # Get second tag (first is the one we'll create)
+        last_tag=$(echo "$tags" | sed -n '1p')
         echo "Using last_tag: '$last_tag'"
 
-        # Get commits between last_tag and HEAD
+        # Get commits since last tag
         if [ -z "$last_tag" ]; then
-          commits=$(git log --oneline -20)
+          commits=$(git log --oneline -10)
         else
-          commits=$(git log $last_tag..HEAD --oneline 2>/dev/null || git log --oneline -20)
+          commits=$(git log $last_tag..HEAD --oneline 2>/dev/null || git log --oneline -10)
         fi
-
-        echo "Commits since $last_tag:"
-        echo "$commits"
+        echo "Commits: $commits"
 
         # Write body to file (multiline support)
         {
@@ -264,26 +255,5 @@ jobs:
           release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Windows.exe
           release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb
         body_path: release-body.md
-        draft: false
-        prerelease: false
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        tag_name: ${{ steps.get_version.outputs.VERSION }}
-        name: ${{ steps.get_version.outputs.VERSION }}
-        files: |
-          release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Windows.exe
-          release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb
-        body: |
-          ## 🚀 New Release: ${{ steps.get_version.outputs.VERSION }}
-
-          ### Changes
-          ${{ steps.changelog.outputs.CHANGELOG }}
-
-          ### Installation
-          - **Windows**: Download and run the `.exe` file.
-          - **Linux**: Install using `sudo dpkg -i QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb`.
         draft: false
         prerelease: false
