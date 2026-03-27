@@ -838,7 +838,7 @@ class UDPToolApp(FluentWindow):
         self.protocol_interface.protocol_selected.connect(self.apply_protocol)
         
         self.addSubInterface(self.home_interface, FIF.HOME, "Control Center")
-        self.addSubInterface(self.protocol_interface, FIF.SETTING, "Protocol Library")
+        self.addSubInterface(self.protocol_interface, QIcon("icons/database.svg"), "Protocol Library")
 
         # 启动时加载数据库中的协议
         self.refresh_protocols()
@@ -971,7 +971,7 @@ if __name__ == '__main__':
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv)
-    app.setWindowIcon(FIF.WIFI.icon())
+    app.setWindowIcon(QIcon("icons/icon.svg"))
     ex = UDPToolApp()
     ex.setObjectName("UDPBroadcasterPro")
     ex.show()
