@@ -98,6 +98,7 @@ jobs:
       run: |
         pyinstaller --noconsole --onefile --name "qt-udp-tester" \
           --hidden-import PyQt5.sip \
+          --add-data "icons:icons" \
           --exclude-module scipy \
           --exclude-module scipy.spatial \
           --exclude-module scipy.special \
@@ -126,9 +127,11 @@ jobs:
       run: |
         mkdir -p package/usr/bin
         mkdir -p package/usr/share/applications
+        mkdir -p package/usr/share/icons
         mkdir -p package/DEBIAN
 
         cp dist/qt-udp-tester package/usr/bin/
+        cp icons/icon.svg package/usr/share/icons/qt-udp-tester.svg
 
         cat <<EOF > package/DEBIAN/control
         Package: qt-udp-tester
@@ -145,7 +148,7 @@ jobs:
         Name=QT-UDP-Tester
         Exec=/usr/bin/qt-udp-tester
         Type=Application
-        Icon=utilities-terminal
+        Icon=/usr/share/icons/qt-udp-tester.svg
         Categories=Development;
         EOF
 
