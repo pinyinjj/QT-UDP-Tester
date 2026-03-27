@@ -207,6 +207,33 @@ jobs:
         git tag ${{ steps.get_version.outputs.VERSION }}
         git push origin ${{ steps.get_version.outputs.VERSION }}
 
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get commits since last tag
+        last_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+        if [ -z "$last_tag" ]; then
+          commits=$(git log --oneline -20)
+        else
+          commits=$(git log $last_tag..HEAD --oneline)
+        fi
+
+        # Convert commits to changelog format
+        changelog=""
+        while IFS= read -r line; do
+          # Skip merge commits and initial commits
+          if echo "$line" | grep -qE "^[0-9a-f]+ Merge"; then continue; fi
+          if echo "$line" | grep -qE "^[0-9a-f]+ initial"; then continue; fi
+
+          # Extract message after commit hash
+          msg=$(echo "$line" | sed 's/^[0-9a-f]* //')
+          # Capitalize first letter
+          msg=$(echo "$msg" | sed 's/./\U&/')
+          changelog="$changelog - $msg\n"
+        done <<< "$commits"
+
+        echo "CHANGELOG=$changelog" >> $GITHUB_OUTPUT
+
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
@@ -219,11 +246,8 @@ jobs:
         body: |
           ## 🚀 New Release: ${{ steps.get_version.outputs.VERSION }}
 
-          ### Features
-          - **SQLite Storage**: Secure database for protocols.
-          - **Modern UI**: Enhanced Fluent Design with draggable payload height.
-          - **Protocol Library**: Multi-field editing and quick-send functionality.
-          - **Smart Logs**: Column-formatted logs with click-to-copy Payload.
+          ### Changes
+          ${{ steps.changelog.outputs.CHANGELOG }}
 
           ### Installation
           - **Windows**: Download and run the `.exe` file.
