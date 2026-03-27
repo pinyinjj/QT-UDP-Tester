@@ -109,7 +109,6 @@ jobs:
           --exclude-module tkinter \
           --exclude-module turtle \
           --exclude-module cv2 \
-          --exclude-module distutils \
           --exclude-module lib2to3 \
           udp_tool_gui.py
 
