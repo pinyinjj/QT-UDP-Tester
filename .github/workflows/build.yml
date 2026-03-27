@@ -148,11 +148,16 @@ jobs:
         Name=QT-UDP-Tester
         Exec=/usr/bin/qt-udp-tester
         Type=Application
-        Icon=/usr/share/icons/qt-udp-tester.svg
+        Icon=qt-udp-tester.svg
         Categories=Development;
         EOF
 
         chmod +x package/usr/bin/qt-udp-tester
+
+        # Add postinst script to update icon cache after installation
+        printf '#!/bin/bash\nupdate-icon-caches /usr/share/icons 2>/dev/null || true\n' > package/DEBIAN/postinst
+        chmod +x package/DEBIAN/postinst
+
         dpkg-deb --build package qt-udp-tester.deb
 
     - name: Upload DEB Artifact
