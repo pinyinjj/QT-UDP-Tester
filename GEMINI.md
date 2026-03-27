@@ -33,3 +33,8 @@ A modern UDP tool with Fluent UI, supporting broadcast sending (Hz) and high-pre
     - Auto-create git tag and GitHub Release after successful builds
     - Include version number in artifact filenames
 
+### Commit Update: 2026-03-26 17:18:34
+- **Commit**: 70a2a39
+- **Author**: Zed Liu
+- **Message**: feat: update build workflow for automatic releases
+

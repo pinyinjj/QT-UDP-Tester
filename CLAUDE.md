@@ -20,4 +20,5 @@
 - Push to `build-release` branch triggers GitHub Actions
 - Workflow auto-increments version from latest tag (patch+1)
 - Creates git tag and GitHub Release automatically
+- Fixed: Corrected release action input from `tag` to `tag_name` and fixed `VERSION_NUMBER` formatting.
 - Artifacts: `QT-UDP-Tester-{version}-Windows.exe`, `QT-UDP-Tester-{version}-Linux.deb`
