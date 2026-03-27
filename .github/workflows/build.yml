@@ -96,7 +96,17 @@ jobs:
 
     - name: Build Binary
       run: |
-        pyinstaller --noconsole --onefile --name "qt-udp-tester" --hidden-import PyQt5.sip --upx-dir=/usr/bin udp_tool_gui.py
+        pyinstaller --noconsole --onefile --name "qt-udp-tester" --hidden-import PyQt5.sip udp_tool_gui.py
+
+    - name: Compress Binary
+      run: |
+        upx -9 -o dist/qt-udp-tester-compressed dist/qt-udp-tester || true
+        if [ -f dist/qt-udp-tester-compressed ]; then
+          mv dist/qt-udp-tester-compressed dist/qt-udp-tester
+          echo "UPX compression successful"
+        else
+          echo "UPX compression failed, using uncompressed binary"
+        fi
 
     - name: Create DEB Package
       run: |
