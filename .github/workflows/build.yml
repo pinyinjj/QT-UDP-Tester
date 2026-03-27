@@ -210,14 +210,26 @@ jobs:
     - name: Generate changelog
       id: changelog
       run: |
-        # Get commits since last tag (skip current tag by using second latest)
+        # Debug: show all tags
+        echo "=== Debug info ==="
+        echo "All tags:"
+        git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'
+        echo ""
+
+        # Get previous tag (skip first because it's the current one we're about to create)
         tags=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$')
         last_tag=$(echo "$tags" | sed -n '2p')
+
+        echo "Using last_tag: '$last_tag'"
+
         if [ -z "$last_tag" ]; then
           commits=$(git log --oneline -20)
         else
           commits=$(git log $last_tag..HEAD --oneline)
         fi
+
+        echo "Commits found:"
+        echo "$commits"
 
         # Write body to file (multiline support)
         {
