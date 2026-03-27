@@ -96,7 +96,14 @@ jobs:
 
     - name: Build Binary
       run: |
-        pyinstaller --noconsole --onefile --name "qt-udp-tester" --hidden-import PyQt5.sip udp_tool_gui.py
+        pyinstaller --noconsole --onefile --name "qt-udp-tester" \
+          --hidden-import PyQt5.sip \
+          --exclude-module scipy \
+          --exclude-module scipy.spatial \
+          --exclude-module scipy.special \
+          --exclude-module scipy.linalg \
+          --exclude-module scipy.stats \
+          udp_tool_gui.py
 
     - name: Compress Binary
       run: |
