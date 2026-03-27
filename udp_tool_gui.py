@@ -1,4 +1,13 @@
 import sys
+import os
+
+# PyInstaller 环境下获取资源路径
+def resource_path(relative_path):
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
 import socket
 import time
 import json
@@ -838,7 +847,7 @@ class UDPToolApp(FluentWindow):
         self.protocol_interface.protocol_selected.connect(self.apply_protocol)
         
         self.addSubInterface(self.home_interface, FIF.HOME, "Control Center")
-        self.addSubInterface(self.protocol_interface, QIcon("icons/database.svg"), "Protocol Library")
+        self.addSubInterface(self.protocol_interface, QIcon(resource_path("icons/database.svg")), "Protocol Library")
 
         # 启动时加载数据库中的协议
         self.refresh_protocols()
@@ -971,7 +980,7 @@ if __name__ == '__main__':
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("icons/icon.svg"))
+    app.setWindowIcon(QIcon(resource_path("icons/icon.svg")))
     ex = UDPToolApp()
     ex.setObjectName("UDPBroadcasterPro")
     ex.show()
