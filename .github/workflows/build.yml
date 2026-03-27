@@ -103,6 +103,14 @@ jobs:
           --exclude-module scipy.special \
           --exclude-module scipy.linalg \
           --exclude-module scipy.stats \
+          --exclude-module unittest \
+          --exclude-module xml.etree \
+          --exclude-module html \
+          --exclude-module tkinter \
+          --exclude-module turtle \
+          --exclude-module cv2 \
+          --exclude-module distutils \
+          --exclude-module lib2to3 \
           udp_tool_gui.py
 
     - name: Compress Binary
