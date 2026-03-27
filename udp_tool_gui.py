@@ -316,7 +316,7 @@ class FontAdjustableTableWidget(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.btn_container.move(self.width() - self.btn_container.width() - 20, 25)
+        self.btn_container.move(self.width() - self.btn_container.width() - 20, 5)
         self.btn_container.raise_()
 
 class FontAdjustableTextEdit(QWidget):
