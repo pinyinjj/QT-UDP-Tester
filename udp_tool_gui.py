@@ -55,7 +55,7 @@ class ProtocolEditDialog(MessageBoxBase):
             "data": self.dataInput.toPlainText().strip()
         }
 
-CONFIG_DIR = os.path.expanduser("~/.commstool")
+CONFIG_DIR = os.path.expanduser("~/.qt-udp-tester")
 if not os.path.exists(CONFIG_DIR):
     os.makedirs(CONFIG_DIR)
 
@@ -839,6 +839,9 @@ class UDPToolApp(FluentWindow):
         
         self.addSubInterface(self.home_interface, FIF.HOME, "Control Center")
         self.addSubInterface(self.protocol_interface, FIF.SETTING, "Protocol Library")
+
+        # 启动时加载数据库中的协议
+        self.refresh_protocols()
 
     def apply_protocol(self, data):
         self.home_interface.payload_container.text_edit.setPlainText(data)
