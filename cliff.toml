@@ -1,0 +1,46 @@
+[changelog]
+# 使用conventional commits格式
+conventional_commits = true
+# 输出格式
+header = """
+## 🚀 Release {version}
+
+"""
+# 模板
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }} ({{ commit.id }})
+{% endfor %}
+{% endfor %}
+"""
+# 忽略这些前缀
+ignore_tags = ["^ci-skip", "^docs-skip"]
+# 标签过滤
+tags_filter = ["^v"]
+
+[git]
+# 从哪个commit开始
+from_version = "0.1.0"
+
+[[changelog.categories]]
+# 设置分组
+title = "Features"
+filter = "+feat"
+
+[[changelog.categories]]
+title = "Bug Fixes"
+filter = "+fix"
+
+[[changelog.categories]]
+title = "CI/CD"
+filter = "+ci"
+
+[[changelog.categories]]
+title = "Documentation"
+filter = "+docs"
+
+[[changelog.categories]]
+title = "Other Changes"
+filter = ".*"
