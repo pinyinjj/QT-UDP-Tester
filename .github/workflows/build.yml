@@ -216,42 +216,38 @@ jobs:
         git tag ${{ steps.get_version.outputs.VERSION }}
         git push origin ${{ steps.get_version.outputs.VERSION }}
 
+    - name: Install git-cliff
+      run: |
+        curl -L https://github.com/orhun/git-cliff/releases/download/v2.5.0/git-cliff-2.5.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+        mv git-cliff-*/git-cliff /usr/local/bin/
+        rm -rf git-cliff-*
+
     - name: Generate changelog
       id: changelog
       run: |
-        # Get all tags
+        # Get all tags sorted by version
         tags=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$')
         echo "Tags: $tags"
 
-        # Get second tag (first is the one we'll create)
-        last_tag=$(echo "$tags" | sed -n '1p')
-        echo "Using last_tag: '$last_tag'"
-
-        # Get commits since last tag
+        # Get previous tag (second in list, first is the one we'll create)
+        last_tag=$(echo "$tags" | sed -n '2p')
         if [ -z "$last_tag" ]; then
-          commits=$(git log --oneline -10)
-        else
-          commits=$(git log $last_tag..HEAD --oneline 2>/dev/null || git log --oneline -10)
+          last_tag="v0.0.0"
         fi
-        echo "Commits: $commits"
+        echo "Using last_tag: '$last_tag'"
+        echo "Current tag: ${{ steps.get_version.outputs.VERSION }}"
 
-        # Write body to file (multiline support)
-        {
-          echo "## 🚀 New Release: ${{ steps.get_version.outputs.VERSION }}"
-          echo ""
-          echo "### Changes"
-          while IFS= read -r line; do
-            if echo "$line" | grep -qE "^[0-9a-f]+ Merge"; then continue; fi
-            if echo "$line" | grep -qE "^[0-9a-f]+ initial"; then continue; fi
-            msg=$(echo "$line" | sed 's/^[0-9a-f]* //')
-            msg=$(echo "$msg" | sed 's/./\U&/')
-            echo "- $msg"
-          done <<< "$commits"
-          echo ""
-          echo "### Installation"
-          echo "- **Windows**: Download and run the \`.exe\` file."
-          echo "- **Linux**: Install using \`sudo dpkg -i QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb\`."
-        } > release-body.md
+        # Generate changelog using git-cliff
+        git-cliff --previous-tag "$last_tag" --current-tag "${{ steps.get_version.outputs.VERSION }}" --output release-body.md
+
+        # Append installation instructions
+        echo "" >> release-body.md
+        echo "### Installation" >> release-body.md
+        echo "- **Windows**: Download and run the \`.exe\` file." >> release-body.md
+        echo "- **Linux**: Install using \`sudo dpkg -i QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb\`." >> release-body.md
+
+        echo "=== Generated changelog ==="
+        cat release-body.md
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
