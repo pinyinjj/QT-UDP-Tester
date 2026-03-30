@@ -224,6 +224,8 @@ jobs:
 
     - name: Generate changelog
       id: changelog
+      env:
+        CURRENT_TAG: ${{ steps.get_version.outputs.VERSION }}
       run: |
         # Get all tags sorted by version
         tags=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$')
@@ -235,19 +237,17 @@ jobs:
           last_tag="v0.0.0"
         fi
         echo "Using last_tag: '$last_tag'"
-        echo "Current tag: ${{ steps.get_version.outputs.VERSION }}"
+        echo "Current tag: $CURRENT_TAG"
 
         # Generate changelog using git-cliff with git range
-        GIT_CLIFF="--context --unreleased --include-commit-groups"
-        git cliff "$last_tag..HEAD" --output release-body.md 2>/dev/null || \
-          git cliff --latest --output release-body.md 2>/dev/null || \
-          echo "# Changelog" > release-body.md
+        export CURRENT_TAG
+        git cliff "$last_tag..HEAD" --output release-body.md
 
         # Append installation instructions
         echo "" >> release-body.md
         echo "### Installation" >> release-body.md
         echo "- **Windows**: Download and run the \`.exe\` file." >> release-body.md
-        echo "- **Linux**: Install using \`sudo dpkg -i QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb\`." >> release-body.md
+        echo "- **Linux**: Install using \`sudo dpkg -i QT-UDP-Tester-$CURRENT_TAG-Linux.deb\`." >> release-body.md
 
         echo "=== Generated changelog ==="
         cat release-body.md

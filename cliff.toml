@@ -3,7 +3,7 @@
 conventional_commits = true
 # 输出格式
 header = """
-## 🚀 Release {version}
+## 🚀 Release {{ version }}
 
 """
 # 模板
@@ -11,7 +11,7 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | upper_first }}
 {% for commit in commits %}
-- {{ commit.message | upper_first }} ({{ commit.id }})
+- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
 {% endfor %}
 {% endfor %}
 """
@@ -25,22 +25,27 @@ tags_filter = ["^v"]
 from_version = "0.1.0"
 
 [[changelog.categories]]
-# 设置分组
+# 设置分组 - 注意order很重要
 title = "Features"
 filter = "+feat"
+order = 1
 
 [[changelog.categories]]
 title = "Bug Fixes"
 filter = "+fix"
+order = 2
 
 [[changelog.categories]]
 title = "CI/CD"
 filter = "+ci"
+order = 3
 
 [[changelog.categories]]
 title = "Documentation"
 filter = "+docs"
+order = 4
 
 [[changelog.categories]]
 title = "Other Changes"
 filter = ".*"
+order = 99
