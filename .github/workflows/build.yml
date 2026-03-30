@@ -40,6 +40,11 @@ jobs:
         pip install pyinstaller
         pip install -r requirements.txt
 
+    - name: Inject version to source
+      run: |
+        $version = "${{ steps.get_version.outputs.VERSION_NUMBER }}"
+        (Get-Content udp_tool_gui.py) -replace 'VERSION = "1\.0\.0"', "VERSION = `"$version`"" | Set-Content udp_tool_gui.py
+
     - name: Download UPX
       run: |
         New-Item -ItemType Directory -Force -Path $env:TEMP\upx
@@ -58,7 +63,14 @@ jobs:
         path: dist/QT-UDP-Tester.exe
 
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+          - os: ubuntu-24.04-arm64
+            arch: arm64
     steps:
     - uses: actions/checkout@v4
       with:
@@ -93,6 +105,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller
         pip install -r requirements.txt
+
+    - name: Inject version to source
+      run: |
+        sed -i 's/VERSION = "1\.0\.0"/VERSION = "${{ steps.get_version.outputs.VERSION_NUMBER }}"/' udp_tool_gui.py
 
     - name: Build Binary
       run: |
@@ -138,7 +154,7 @@ jobs:
         Version: ${{ steps.get_version.outputs.VERSION_NUMBER }}
         Section: utils
         Priority: optional
-        Architecture: amd64
+        Architecture: ${{ matrix.arch }}
         Maintainer: Gemini CLI
         Description: A modern UDP tool with Fluent UI
         EOF
@@ -158,13 +174,13 @@ jobs:
         printf '#!/bin/bash\nupdate-icon-caches /usr/share/icons 2>/dev/null || true\n' > package/DEBIAN/postinst
         chmod +x package/DEBIAN/postinst
 
-        dpkg-deb --build package qt-udp-tester.deb
+        dpkg-deb --build package qt-udp-tester-${{ matrix.arch }}.deb
 
     - name: Upload DEB Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: linux-deb
-        path: qt-udp-tester.deb
+        name: linux-deb-${{ matrix.arch }}
+        path: qt-udp-tester-${{ matrix.arch }}.deb
 
   create-release:
     needs: [build-windows, build-linux]
@@ -200,16 +216,22 @@ jobs:
         name: windows-exe
         path: release-assets
 
-    - name: Download Linux Artifact
+    - name: Download Linux Artifacts
       uses: actions/download-artifact@v4
       with:
-        name: linux-deb
+        pattern: linux-deb-*
         path: release-assets
+        merge-multiple: true
 
     - name: Rename assets
       run: |
         mv release-assets/QT-UDP-Tester.exe "release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Windows.exe"
-        mv release-assets/qt-udp-tester.deb "release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb"
+        if [ -f release-assets/qt-udp-tester-amd64.deb ]; then
+          mv release-assets/qt-udp-tester-amd64.deb "release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux-amd64.deb"
+        fi
+        if [ -f release-assets/qt-udp-tester-arm64.deb ]; then
+          mv release-assets/qt-udp-tester-arm64.deb "release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux-arm64.deb"
+        fi
 
     - name: Create Tag
       run: |
@@ -252,7 +274,8 @@ jobs:
         echo "" >> release-body.md
         echo "### Installation" >> release-body.md
         echo "- **Windows**: Download and run the \`.exe\` file." >> release-body.md
-        echo "- **Linux**: Install using \`sudo dpkg -i QT-UDP-Tester-$current_tag-Linux.deb\`." >> release-body.md
+        echo "- **Linux (amd64)**: Install using \`sudo dpkg -i QT-UDP-Tester-$current_tag-Linux-amd64.deb\`." >> release-body.md
+        echo "- **Linux (arm64)**: Install using \`sudo dpkg -i QT-UDP-Tester-$current_tag-Linux-arm64.deb\`." >> release-body.md
 
         echo "=== Generated changelog ==="
         cat release-body.md
@@ -265,7 +288,9 @@ jobs:
         name: ${{ steps.get_version.outputs.VERSION }}
         files: |
           release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Windows.exe
-          release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux.deb
+          release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux-amd64.deb
+          release-assets/QT-UDP-Tester-${{ steps.get_version.outputs.VERSION }}-Linux-arm64.deb
         body_path: release-body.md
         draft: false
         prerelease: false
+
