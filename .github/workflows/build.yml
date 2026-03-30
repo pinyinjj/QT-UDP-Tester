@@ -237,8 +237,11 @@ jobs:
         echo "Using last_tag: '$last_tag'"
         echo "Current tag: ${{ steps.get_version.outputs.VERSION }}"
 
-        # Generate changelog using git-cliff
-        git-cliff --previous-tag "$last_tag" --current-tag "${{ steps.get_version.outputs.VERSION }}" --output release-body.md
+        # Generate changelog using git-cliff with git range
+        GIT_CLIFF="--context --unreleased --include-commit-groups"
+        git cliff "$last_tag..HEAD" --output release-body.md 2>/dev/null || \
+          git cliff --latest --output release-body.md 2>/dev/null || \
+          echo "# Changelog" > release-body.md
 
         # Append installation instructions
         echo "" >> release-body.md
