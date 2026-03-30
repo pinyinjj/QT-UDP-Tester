@@ -1,11 +1,8 @@
 [changelog]
 # 使用conventional commits格式
 conventional_commits = true
-# 输出格式
-header = """
-## 🚀 Release {{ version }}
-
-"""
+# 不使用header，让脚本手动添加
+header = ""
 # 模板
 body = """
 {% for group, commits in commits | group_by(attribute="group") %}
