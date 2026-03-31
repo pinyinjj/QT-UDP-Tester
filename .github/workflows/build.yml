@@ -97,8 +97,8 @@ jobs:
       run: |
         export DEBIAN_FRONTEND=noninteractive
         sudo apt-get update
-        # 安装编译依赖、Qt5 开发工具以及运行所需的系统库（xcb 等）
-        sudo apt-get install -y build-essential python3-dev upx-ucl python3-pyqt5 pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake python3-pip \
+        # 安装编译依赖、Qt5 开发工具、运行所需的系统库以及 SVG 支持
+        sudo apt-get install -y build-essential python3-dev upx-ucl python3-pyqt5 python3-pyqt5.qtsvg pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake python3-pip \
           libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
         # 使用系统 python 的 pip 安装剩余依赖
         python3 -m pip install --upgrade pip --break-system-packages || true
@@ -106,8 +106,8 @@ jobs:
         # 强制使用系统安装的 PyQt5，避免 pip 尝试源码编译
         grep -v "PyQt5" requirements.txt > req-filtered.txt || true
         python3 -m pip install -r req-filtered.txt --break-system-packages
-        # 验证 PyQt5 是否可用
-        python3 -c "from PyQt5 import QtCore; print('PyQt5 version:', QtCore.PYQT_VERSION_STR)"
+        # 验证 PyQt5 和 QtSvg 是否可用
+        python3 -c "from PyQt5 import QtCore, QtSvg; print('PyQt5 version:', QtCore.PYQT_VERSION_STR); print('QtSvg is available')"
 
     - name: Inject version to source
       run: |
@@ -115,9 +115,10 @@ jobs:
 
     - name: Build Binary
       run: |
-        # 暂时移除 --noconsole 以便用户在终端运行查看报错
+        # 显式包含 PyQt5.sip 和 PyQt5.QtSvg
         python3 -m PyInstaller --onefile --name "qt-udp-tester" \
           --hidden-import PyQt5.sip \
+          --hidden-import PyQt5.QtSvg \
           --add-data "icons:icons" \
           --exclude-module scipy \
           --exclude-module scipy.spatial \
