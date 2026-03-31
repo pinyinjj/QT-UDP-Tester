@@ -737,10 +737,10 @@ class UDPToolApp(FluentWindow):
         self.setWindowTitle(f"QT-UDP-Tester v{VERSION}")
         self.resize(1150, 920)
 
-        # 增加细微的现代化边框，确保在阴影缺失时也有边界
+        # 强化边框，增加显著的 3px 黑色边框，确保在阴影失效时依然可见
         self.setStyleSheet("""
-            UDPToolApp {
-                border: 2px solid #777;
+            #UDPBroadcasterPro {
+                border: 3px solid #333;
                 background-color: #f3f3f3;
             }
         """)
