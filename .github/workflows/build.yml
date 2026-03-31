@@ -97,8 +97,9 @@ jobs:
       run: |
         export DEBIAN_FRONTEND=noninteractive
         sudo apt-get update
-        # 安装编译依赖和 Qt5 开发工具，确保 qmake 可用
-        sudo apt-get install -y build-essential python3-dev upx-ucl python3-pyqt5 pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake python3-pip
+        # 安装编译依赖、Qt5 开发工具以及运行所需的系统库（xcb 等）
+        sudo apt-get install -y build-essential python3-dev upx-ucl python3-pyqt5 pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake python3-pip \
+          libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
         # 使用系统 python 的 pip 安装剩余依赖
         python3 -m pip install --upgrade pip --break-system-packages || true
         python3 -m pip install pyinstaller --break-system-packages
@@ -114,7 +115,8 @@ jobs:
 
     - name: Build Binary
       run: |
-        python3 -m PyInstaller --noconsole --onefile --name "qt-udp-tester" \
+        # 暂时移除 --noconsole 以便用户在终端运行查看报错
+        python3 -m PyInstaller --onefile --name "qt-udp-tester" \
           --hidden-import PyQt5.sip \
           --add-data "icons:icons" \
           --exclude-module scipy \
