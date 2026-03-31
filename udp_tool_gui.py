@@ -712,6 +712,15 @@ class UDPToolApp(FluentWindow):
         setThemeColor('#0078d4')
         self.setWindowTitle(f"QT-UDP-Tester v{VERSION}")
         self.resize(1150, 920)
+
+        # 增加细微的现代化边框，确保在阴影缺失时也有边界
+        self.setStyleSheet("""
+            UDPToolApp {
+                border: 1px solid #ddd;
+                background-color: #f3f3f3;
+            }
+        """)
+
         self.loop_timers = {}
         self.db = DatabaseManager()
         self.home_interface = HomeInterface(self)
