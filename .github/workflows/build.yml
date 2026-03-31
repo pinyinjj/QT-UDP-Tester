@@ -93,22 +93,20 @@ jobs:
         echo "VERSION=$new_version" >> $GITHUB_OUTPUT
         echo "VERSION_NUMBER=${new_version#v}" >> $GITHUB_OUTPUT
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-
     - name: Install dependencies
       run: |
         export DEBIAN_FRONTEND=noninteractive
         sudo apt-get update
         # 安装编译依赖和 Qt5 开发工具，确保 qmake 可用
-        sudo apt-get install -y build-essential python3-dev upx-ucl python3-pyqt5 pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake
-        python -m pip install --upgrade pip
-        pip install pyinstaller
+        sudo apt-get install -y build-essential python3-dev upx-ucl python3-pyqt5 pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake python3-pip
+        # 使用系统 python 的 pip 安装剩余依赖
+        python3 -m pip install --upgrade pip --break-system-packages || true
+        python3 -m pip install pyinstaller --break-system-packages
         # 强制使用系统安装的 PyQt5，避免 pip 尝试源码编译
         grep -v "PyQt5" requirements.txt > req-filtered.txt || true
-        pip install -r req-filtered.txt
+        python3 -m pip install -r req-filtered.txt --break-system-packages
+        # 验证 PyQt5 是否可用
+        python3 -c "from PyQt5 import QtCore; print('PyQt5 version:', QtCore.PYQT_VERSION_STR)"
 
     - name: Inject version to source
       run: |
@@ -116,7 +114,7 @@ jobs:
 
     - name: Build Binary
       run: |
-        pyinstaller --noconsole --onefile --name "qt-udp-tester" \
+        python3 -m PyInstaller --noconsole --onefile --name "qt-udp-tester" \
           --hidden-import PyQt5.sip \
           --add-data "icons:icons" \
           --exclude-module scipy \
