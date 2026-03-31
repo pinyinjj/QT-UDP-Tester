@@ -20,7 +20,7 @@ import threading
 from datetime import datetime
 
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize, QPoint, QEvent, QPropertyAnimation, QEasingCurve
-from PyQt5.QtGui import QFont, QTextCursor, QIcon, QColor
+from PyQt5.QtGui import QFont, QTextCursor, QIcon, QColor, QPainter, QPen
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QTableWidgetItem
 
 from qfluentwidgets import (
@@ -737,14 +737,6 @@ class UDPToolApp(FluentWindow):
         self.setWindowTitle(f"QT-UDP-Tester v{VERSION}")
         self.resize(1150, 920)
 
-        # 强化边框，增加显著的 3px 黑色边框，确保在阴影失效时依然可见
-        self.setStyleSheet("""
-            #UDPBroadcasterPro {
-                border: 3px solid #333;
-                background-color: #f3f3f3;
-            }
-        """)
-
         self.loop_timers = {}
         self.db = DatabaseManager()
         self.home_interface = HomeInterface(self)
@@ -766,6 +758,19 @@ class UDPToolApp(FluentWindow):
         self.addSubInterface(self.home_interface, FIF.HOME, "Control Center")
         self.addSubInterface(self.protocol_interface, QIcon(resource_path("icons/database.svg")), "Protocol Library")
         self.refresh_protocols()
+
+    def paintEvent(self, e):
+        """ 重写绘图事件，手动在最外层绘制一个 2px 的深灰色边框 """
+        super().paintEvent(e)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # 使用深灰色作为边框颜色
+        pen = QPen(QColor(100, 100, 100), 2)
+        painter.setPen(pen)
+        
+        # 绘制矩形框，注意减去线宽的一半以确保线条完全在窗口内部
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
     def _get_send_socket(self):
         if self._shared_send_socket is None:
