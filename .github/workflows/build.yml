@@ -97,19 +97,23 @@ jobs:
       run: |
         export DEBIAN_FRONTEND=noninteractive
         sudo apt-get update
-        # 安装编译依赖、Qt5 开发工具、以及所有可能的 PyQt5 子模块以匹配 PyPI wheel 的功能
-        sudo apt-get install -y build-essential python3-dev upx-ucl python3-pip \
-          python3-pyqt5 python3-pyqt5.qtsvg python3-pyqt5.qtx11extras python3-pyqt5.qtmultimedia python3-pyqt5.qtquick \
-          pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake \
-          libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
-        # 使用系统 python 的 pip 安装剩余依赖
-        python3 -m pip install --upgrade pip --break-system-packages || true
-        python3 -m pip install pyinstaller --break-system-packages
-        # 强制使用系统安装的 PyQt5，避免 pip 尝试源码编译
-        grep -v "PyQt5" requirements.txt > req-filtered.txt || true
-        python3 -m pip install -r req-filtered.txt --break-system-packages
-        # 验证关键模块是否可用
-        python3 -c "from PyQt5 import QtCore, QtSvg, QtX11Extras; print('All Qt modules are available')"
+        if [ "${{ matrix.arch }}" = "amd64" ]; then
+          # amd64: 恢复使用 pip 安装，确保与官方 Wheel 的外观一致性（包括阴影效果）
+          sudo apt-get install -y build-essential python3-dev upx-ucl python3-pip
+          python3 -m pip install --upgrade pip --break-system-packages || true
+          python3 -m pip install pyinstaller --break-system-packages
+          python3 -m pip install -r requirements.txt --break-system-packages
+        else
+          # arm64: 继续使用 apt 方案绕过源码编译难题
+          sudo apt-get install -y build-essential python3-dev upx-ucl python3-pip \
+            python3-pyqt5 python3-pyqt5.qtsvg python3-pyqt5.qtx11extras python3-pyqt5.qtmultimedia python3-pyqt5.qtquick \
+            pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake \
+            libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
+          python3 -m pip install --upgrade pip --break-system-packages || true
+          python3 -m pip install pyinstaller --break-system-packages
+          grep -v "PyQt5" requirements.txt > req-filtered.txt || true
+          python3 -m pip install -r req-filtered.txt --break-system-packages
+        fi
 
     - name: Inject version to source
       run: |
@@ -117,8 +121,7 @@ jobs:
 
     - name: Build Binary
       run: |
-        # 显式包含所有可能缺失的 PyQt5 子模块
-        python3 -m PyInstaller --onefile --name "qt-udp-tester" \
+        python3 -m PyInstaller --noconsole --onefile --name "qt-udp-tester" \
           --hidden-import PyQt5.sip \
           --hidden-import PyQt5.QtSvg \
           --hidden-import PyQt5.QtX11Extras \
