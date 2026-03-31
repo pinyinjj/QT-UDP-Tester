@@ -434,10 +434,10 @@ class HomeInterface(SingleDirectionScrollArea):
         s_layout.addWidget(SubtitleLabel("Sender"))
         cfg_layout = QHBoxLayout()
         self.target_ip = LineEdit(self.sender_card)
-        self.target_ip.setText("255.255.255.255")
+        self.target_ip.setPlaceholderText("255.255.255.255")
         self.target_port = SpinBox(self.sender_card)
         self.target_port.setRange(1, 65535)
-        self.target_port.setValue(5005)
+        self.target_port.setValue(5005) # Internal default
         self.send_freq = DoubleSpinBox(self.sender_card)
         self.send_freq.setRange(0.1, 1000.0)
         self.send_freq.setValue(1.0)
@@ -451,7 +451,7 @@ class HomeInterface(SingleDirectionScrollArea):
         s_layout.addLayout(cfg_layout)
         s_layout.addWidget(StrongBodyLabel("Message Payload"))
         self.payload_container = FontAdjustableTextEdit(self.sender_card)
-        self.payload_container.text_edit.setPlainText(r'{"cmd":"ping","data":0}')
+        self.payload_container.text_edit.setPlaceholderText(r'e.g. {"cmd":"ping","data":0}')
         self.payload_container.setMinimumHeight(140)
         s_layout.addWidget(self.payload_container)
         s_layout.setStretchFactor(self.payload_container, 1)
@@ -483,7 +483,6 @@ class HomeInterface(SingleDirectionScrollArea):
         r_cfg = QHBoxLayout()
         self.listen_port = LineEdit(self.receiver_card)
         self.listen_port.setPlaceholderText("e.g. 5005, 5006")
-        self.listen_port.setText("5005")
         self.listen_port.setFixedWidth(150)
         self.filter_input = LineEdit(self.receiver_card)
         self.filter_input.setPlaceholderText("Add filter keyword...")
@@ -526,6 +525,13 @@ class HomeInterface(SingleDirectionScrollArea):
         r_layout.addLayout(r_ctrl)
         self.vBoxLayout.addWidget(self.receiver_card)
         self.vBoxLayout.setStretchFactor(self.receiver_card, 2)
+
+        # 连接信号以实时保存配置
+        self.target_ip.textChanged.connect(self.save_config)
+        self.target_port.valueChanged.connect(self.save_config)
+        self.send_freq.valueChanged.connect(self.save_config)
+        self.listen_port.textChanged.connect(self.save_config)
+        self.payload_container.text_edit.textChanged.connect(self.save_config)
 
     def on_log_item_clicked(self, item):
         if item.column() == 3:
@@ -592,7 +598,16 @@ class HomeInterface(SingleDirectionScrollArea):
             table.setRowHidden(i, not match)
 
     def save_config(self):
-        config = {"filters": [tag.filter_text for tag in self.filter_tags], "payload_font_size": self.payload_container.current_font_size, "log_font_size": self.log_container.current_font_size}
+        config = {
+            "filters": [tag.filter_text for tag in self.filter_tags], 
+            "payload_font_size": self.payload_container.current_font_size, 
+            "log_font_size": self.log_container.current_font_size,
+            "target_ip": self.target_ip.text(),
+            "target_port": self.target_port.value(),
+            "send_freq": self.send_freq.value(),
+            "payload": self.payload_container.text_edit.toPlainText(),
+            "listen_port": self.listen_port.text()
+        }
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f: json.dump(config, f)
         except: pass
@@ -605,9 +620,18 @@ class HomeInterface(SingleDirectionScrollArea):
                     filters = config.get("filters", [])
                     payload_font_size = config.get("payload_font_size", 13)
                     log_font_size = config.get("log_font_size", 13)
+                    
                     for text in filters: self.add_filter_tag(text, save=False)
                     self.payload_container.set_font_size(payload_font_size)
                     self.log_container.set_font_size(log_font_size)
+                    
+                    # 加载历史输入内容
+                    if "target_ip" in config: self.target_ip.setText(config["target_ip"])
+                    if "target_port" in config: self.target_port.setValue(config["target_port"])
+                    if "send_freq" in config: self.send_freq.setValue(config["send_freq"])
+                    if "payload" in config: self.payload_container.text_edit.setPlainText(config["payload"])
+                    if "listen_port" in config: self.listen_port.setText(config["listen_port"])
+
                     protocols = self.window().db.get_all_protocols()
                     self.window().protocol_interface.load_protocols(protocols)
             except: pass
