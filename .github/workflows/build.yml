@@ -100,13 +100,13 @@ jobs:
 
     - name: Install dependencies
       run: |
+        export DEBIAN_FRONTEND=noninteractive
         sudo apt-get update
         # 安装编译依赖和 Qt5 开发工具，确保 qmake 可用
         sudo apt-get install -y build-essential python3-dev upx-ucl python3-pyqt5 pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake
         python -m pip install --upgrade pip
         pip install pyinstaller
-        # 如果 requirements.txt 中有 PyQt5，请确保 pip 不会再次去下载源码编译
-        # 你可以创建一个不包含 PyQt5 的 requirements-linux.txt，或者用 grep 剔除它：
+        # 强制使用系统安装的 PyQt5，避免 pip 尝试源码编译
         grep -v "PyQt5" requirements.txt > req-filtered.txt || true
         pip install -r req-filtered.txt
 
