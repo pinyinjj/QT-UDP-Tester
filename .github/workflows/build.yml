@@ -101,8 +101,8 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        # 新增安装 python3-pyqt5 等系统级依赖包
-        sudo apt-get install -y build-essential python3-dev upx-ucl python3-pyqt5 pyqt5-dev-tools qttools5-dev-tools
+        # 安装编译依赖和 Qt5 开发工具，确保 qmake 可用
+        sudo apt-get install -y build-essential python3-dev upx-ucl python3-pyqt5 pyqt5-dev-tools qttools5-dev-tools qtbase5-dev qt5-qmake
         python -m pip install --upgrade pip
         pip install pyinstaller
         # 如果 requirements.txt 中有 PyQt5，请确保 pip 不会再次去下载源码编译
