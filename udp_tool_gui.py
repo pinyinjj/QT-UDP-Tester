@@ -740,7 +740,7 @@ class UDPToolApp(FluentWindow):
         # 增加细微的现代化边框，确保在阴影缺失时也有边界
         self.setStyleSheet("""
             UDPToolApp {
-                border: 1px solid #ddd;
+                border: 2px solid #777;
                 background-color: #f3f3f3;
             }
         """)
