@@ -482,10 +482,11 @@ class HomeInterface(SingleDirectionScrollArea):
         r_layout.addWidget(SubtitleLabel("Receiver"))
         r_cfg = QHBoxLayout()
         self.listen_port = LineEdit(self.receiver_card)
-        self.listen_port.setPlaceholderText("e.g. 5005, 5006")
-        self.listen_port.setFixedWidth(150)
+        self.listen_port.setPlaceholderText("e.g. 5005, 5006, 5007, ...")
+        # 移除固定宽度，让其自适应增长
         self.filter_input = LineEdit(self.receiver_card)
         self.filter_input.setPlaceholderText("Add filter keyword...")
+        self.filter_input.setFixedWidth(180) # 固定 Filters 宽度，实现“缩短”
         self.add_filter_btn = TransparentToolButton(FIF.ADD, self.filter_input)
         self.add_filter_btn.setFixedSize(30, 30)
         self.add_filter_btn.setCursor(Qt.PointingHandCursor)
@@ -495,10 +496,10 @@ class HomeInterface(SingleDirectionScrollArea):
         self.start_recv_btn = PrimaryPushButton(FIF.WIFI, "Start Listening", self.receiver_card)
         self.start_recv_btn.setFixedWidth(160)
         r_cfg.addWidget(CaptionLabel("Listen Port"))
-        r_cfg.addWidget(self.listen_port)
+        r_cfg.addWidget(self.listen_port, 1) # 设置 stretch=1，使其占据主要空间
         r_cfg.addSpacing(20)
         r_cfg.addWidget(CaptionLabel("Filters"))
-        r_cfg.addWidget(self.filter_input, 1)
+        r_cfg.addWidget(self.filter_input) # 固定宽度的组件
         r_cfg.addSpacing(15)
         r_cfg.addWidget(self.start_recv_btn)
         r_layout.addLayout(r_cfg)
@@ -737,6 +738,9 @@ class UDPToolApp(FluentWindow):
         self.setWindowTitle(f"QT-UDP-Tester v{VERSION}")
         self.resize(1150, 920)
 
+        # 设置 1px 的内边距，确保子组件（如滚动条）不会盖住我们手动画的 1px 边框
+        self.setContentsMargins(1, 1, 1, 1)
+
         self.loop_timers = {}
         self.db = DatabaseManager()
         self.home_interface = HomeInterface(self)
@@ -760,16 +764,16 @@ class UDPToolApp(FluentWindow):
         self.refresh_protocols()
 
     def paintEvent(self, e):
-        """ 重写绘图事件，手动在最外层绘制一个 2px 的深灰色边框 """
+        """ 重写绘图事件，手动在最外层绘制一个 1px 的深灰色边框 """
         super().paintEvent(e)
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.Antialiasing, False)
         
-        # 使用深灰色作为边框颜色
-        pen = QPen(QColor(100, 100, 100), 2)
+        # 使用深灰色作为边框颜色，线宽设为 1px
+        pen = QPen(QColor(120, 120, 120), 1)
         painter.setPen(pen)
         
-        # 绘制矩形框，注意减去线宽的一半以确保线条完全在窗口内部
+        # 在 (0, 0) 绘制矩形框，对应 1px 的内边距
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
     def _get_send_socket(self):
