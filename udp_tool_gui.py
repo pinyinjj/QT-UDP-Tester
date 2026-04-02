@@ -827,7 +827,11 @@ class UDPToolApp(FluentWindow):
 
     def toggle_receiver(self):
         btn = self.home_interface.start_recv_btn
-        if self.recv_thread and self.recv_thread.isRunning(): self.recv_thread.stop(); btn.setText("Start Listening"); btn.setIcon(FIF.WIFI)
+        if self.recv_thread and self.recv_thread.isRunning():
+            self.recv_thread.stop()
+            btn.setText("Start Listening")
+            btn.setIcon(FIF.WIFI)
+            self.home_interface.listen_port.setEnabled(True)
         else:
             port_text = self.home_interface.listen_port.text().strip()
             if not port_text: self.show_toast("Error", "Please enter at least one port", True); return
@@ -840,13 +844,22 @@ class UDPToolApp(FluentWindow):
                         else: raise ValueError(f"Invalid port: {p}")
             except ValueError as e: self.show_toast("Error", str(e), True); return
             if not ports: self.show_toast("Error", "No valid ports found", True); return
+            
+            # 禁用输入框防止在监听时修改
+            self.home_interface.listen_port.setEnabled(False)
+            
             self.recv_thread = ReceiverThread(ports)
             self.recv_thread.packets_received.connect(self.on_packets_received) # Updated signal
             self.recv_thread.error_occurred.connect(self.on_receiver_error)
             self.recv_thread.start()
             btn.setText("Stop Listening"); btn.setIcon(FIF.CLOSE)
 
-    def on_receiver_error(self, error_msg): self.show_toast("Receiver Error", error_msg, is_error=True); btn = self.home_interface.start_recv_btn; btn.setText("Start Listening"); btn.setIcon(FIF.WIFI)
+    def on_receiver_error(self, error_msg):
+        self.show_toast("Receiver Error", error_msg, is_error=True)
+        btn = self.home_interface.start_recv_btn
+        btn.setText("Start Listening")
+        btn.setIcon(FIF.WIFI)
+        self.home_interface.listen_port.setEnabled(True)
 
     def on_packets_received(self, packets):
         table = self.home_interface.log_container.table
