@@ -512,6 +512,7 @@ class HomeInterface(SingleDirectionScrollArea):
         self.log_container.table.setColumnCount(4)
         self.log_container.table.setHorizontalHeaderLabels(["Time", "Source", "Port", "Payload"])
         self.log_container.table.horizontalHeader().setStretchLastSection(True)
+        self.log_container.table.setSortingEnabled(True)
         self.log_container.table.setEditTriggers(TableWidget.NoEditTriggers)
         self.log_container.table.setAlternatingRowColors(True)
         self.log_container.table.setColumnWidth(0, 140)
@@ -871,6 +872,9 @@ class UDPToolApp(FluentWindow):
         
         # Turn off updates to prevent flickering
         table.setUpdatesEnabled(False)
+        # Disable sorting temporarily to insert rows correctly at the end
+        is_sorting = table.isSortingEnabled()
+        table.setSortingEnabled(False)
         try:
             for timestamp, ip, port, local_port, data in packets:
                 try: text = data.decode('utf-8', errors='replace').strip()
@@ -897,6 +901,7 @@ class UDPToolApp(FluentWindow):
             
             table.scrollToBottom()
         finally:
+            table.setSortingEnabled(is_sorting)
             table.setUpdatesEnabled(True)
 
     def closeEvent(self, event):
