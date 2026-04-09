@@ -287,7 +287,8 @@ jobs:
         echo "" >> release-body.md
         echo "### Installation" >> release-body.md
         echo "- **Windows**: Download and run the \`.exe\` file." >> release-body.md
-        echo "- **Linux**: Install using \`sudo apt install ./<filename>.deb\` (this will automatically resolve dependencies)." >> release-body.md
+        echo "- **Linux (amd64)**: Install using \`sudo apt install ./QT-UDP-Tester-$current_tag-Linux-amd64.deb\` (this will automatically resolve dependencies)." >> release-body.md
+        echo "- **Linux (arm64)**: Install using \`sudo apt install ./QT-UDP-Tester-$current_tag-Linux-arm64.deb\` (this will automatically resolve dependencies)." >> release-body.md
 
         echo "=== Generated changelog ==="
         cat release-body.md
