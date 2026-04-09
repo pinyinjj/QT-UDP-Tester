@@ -288,9 +288,9 @@ jobs:
         # Append installation instructions
         echo "" >> release-body.md
         echo "### Installation" >> release-body.md
-        echo "- **Windows**: Download and run the \`.exe\` file." >> release-body.md
-        echo "- **Linux (amd64)**: Install using \`sudo apt install ./QT-UDP-Tester-$current_tag-Linux-amd64.deb\` (this will automatically resolve dependencies)." >> release-body.md
-        echo "- **Linux (arm64)**: Install using \`sudo apt install ./QT-UDP-Tester-$current_tag-Linux-arm64.deb\` (this will automatically resolve dependencies)." >> release-body.md
+        echo "- **Windows**: 下载并运行 \`.exe\` 文件。" >> release-body.md
+        echo "- **Linux (amd64)**: 使用 \`sudo apt install ./QT-UDP-Tester-$current_tag-Linux-amd64.deb\` 进行安装，该方式会自动安装所需的系统依赖。" >> release-body.md
+        echo "- **Linux (arm64)**: 使用 \`sudo apt install ./QT-UDP-Tester-$current_tag-Linux-arm64.deb\` 进行安装，该方式会自动安装所需的系统依赖。" >> release-body.md
 
         echo "=== Generated changelog ==="
         cat release-body.md
