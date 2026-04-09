@@ -167,7 +167,8 @@ jobs:
         Section: utils
         Priority: optional
         Architecture: ${{ matrix.arch }}
-        Maintainer: Gemini CLI
+        Maintainer: QT-UDP-Tester Team
+        Depends: libc6, libqt5core5a, libqt5gui5, libqt5widgets5, libxcb-cursor0, libxcb-xinerama0, libxcb-shape0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-render-util0, libxcb-xkb1, libxkbcommon-x11-0
         Description: A modern UDP tool with Fluent UI
         EOF
 
@@ -286,8 +287,7 @@ jobs:
         echo "" >> release-body.md
         echo "### Installation" >> release-body.md
         echo "- **Windows**: Download and run the \`.exe\` file." >> release-body.md
-        echo "- **Linux (amd64)**: Install using \`sudo dpkg -i QT-UDP-Tester-$current_tag-Linux-amd64.deb\`." >> release-body.md
-        echo "- **Linux (arm64)**: Install using \`sudo dpkg -i QT-UDP-Tester-$current_tag-Linux-arm64.deb\`." >> release-body.md
+        echo "- **Linux**: Install using \`sudo apt install ./<filename>.deb\` (this will automatically resolve dependencies)." >> release-body.md
 
         echo "=== Generated changelog ==="
         cat release-body.md
