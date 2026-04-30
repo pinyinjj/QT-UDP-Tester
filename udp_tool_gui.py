@@ -295,7 +295,7 @@ class FontAdjustableTableWidget(QWidget):
         self.table.setWordWrap(False)
         self.table.verticalHeader().hide()
         self.current_font_size = 13
-        setFont(self.table, self.current_font_size, QFont.Monospace)
+        self.set_font_size(self.current_font_size)
         self.layout.addWidget(self.table)
         self.btn_container = QWidget(self)
         self.btn_layout = QHBoxLayout(self.btn_container)
@@ -316,14 +316,17 @@ class FontAdjustableTableWidget(QWidget):
 
     def adjust_font(self, delta):
         self.current_font_size = max(8, min(48, self.current_font_size + delta))
-        setFont(self.table, self.current_font_size, QFont.Monospace)
-        self.table.verticalHeader().setDefaultSectionSize(int(self.current_font_size * 1.8))
+        self.set_font_size(self.current_font_size)
         self.fontSizeChanged.emit(self.current_font_size)
 
     def set_font_size(self, size):
         self.current_font_size = max(8, min(48, size))
-        setFont(self.table, self.current_font_size, QFont.Monospace)
+        font = QFont("Consolas")
+        font.setPointSize(self.current_font_size)
+        font.setStyleHint(QFont.Monospace)
+        self.table.setFont(font)
         self.table.verticalHeader().setDefaultSectionSize(int(self.current_font_size * 1.8))
+        self.table.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -340,7 +343,7 @@ class FontAdjustableTextEdit(QWidget):
         self.text_edit.setReadOnly(is_readonly)
         self.text_edit.setPlaceholderText(placeholder)
         self.current_font_size = 13
-        setFont(self.text_edit, self.current_font_size, QFont.Monospace)
+        self.set_font_size(self.current_font_size)
         self.layout.addWidget(self.text_edit)
         self.btn_container = QWidget(self)
         self.btn_layout = QHBoxLayout(self.btn_container)
@@ -360,12 +363,16 @@ class FontAdjustableTextEdit(QWidget):
 
     def adjust_font(self, delta):
         self.current_font_size = max(8, min(48, self.current_font_size + delta))
-        setFont(self.text_edit, self.current_font_size, QFont.Monospace)
+        self.set_font_size(self.current_font_size)
         self.fontSizeChanged.emit(self.current_font_size)
 
     def set_font_size(self, size):
         self.current_font_size = max(8, min(48, size))
-        setFont(self.text_edit, self.current_font_size, QFont.Monospace)
+        font = QFont("Consolas")
+        font.setPointSize(self.current_font_size)
+        font.setStyleHint(QFont.Monospace)
+        self.text_edit.setFont(font)
+        self.text_edit.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -588,13 +595,20 @@ class HomeInterface(SingleDirectionScrollArea):
         if not text: return
         try:
             obj = json.loads(text)
-            if '\n' in text: new_text = json.dumps(obj, separators=(',', ':'), ensure_ascii=False)
-            else: new_text = json.dumps(obj, indent=4, ensure_ascii=False)
+            if '\n' in text: 
+                new_text = json.dumps(obj, separators=(',', ':'), ensure_ascii=False)
+            else: 
+                new_text = json.dumps(obj, indent=4, ensure_ascii=False)
             self.payload_container.text_edit.setPlainText(new_text)
-        except Exception as e:
-            w = MessageBox("Format Error", f"Invalid JSON format. Problematic text:\n\n{text}", self.window())
+        except json.JSONDecodeError as e:
+            lines = text.split('\n')
+            error_line = lines[e.lineno-1] if e.lineno <= len(lines) else "Unknown"
+            msg = f"JSON Syntax Error at Line {e.lineno}, Column {e.colno}:\n\n\"{error_line.strip()}\"\n\nDetails: {e.msg}"
+            w = MessageBox("Format Error", msg, self.window())
             w.cancelButton.hide()
             w.exec()
+        except Exception as e:
+            self.window().show_toast("Error", str(e), True)
 
     def on_save_clicked(self):
         current_port = self.target_port.value()
