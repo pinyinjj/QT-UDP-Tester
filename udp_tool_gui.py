@@ -372,28 +372,66 @@ class FontAdjustableTextEdit(QWidget):
         self.btn_container.move(self.width() - self.btn_container.width() - 2, 2)
         self.btn_container.raise_()
 
-class HeightResizer(QFrame):
+class Splitter(QFrame):
     def __init__(self, target, parent=None):
         super().__init__(parent)
         self.target = target
         self.setCursor(Qt.SizeVerCursor)
-        self.setFixedHeight(4)
-        self.setStyleSheet("HeightResizer { background: transparent; border-radius: 2px; } HeightResizer:hover { background: #0078d4; }")
+        self.setFixedHeight(12)  # Area for mouse hit
         self.pressing = False
+        self.setMouseTracking(True)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.pressing = True
             self.startY = event.globalY()
             self.startH = self.target.height()
+            self.update()
 
     def mouseMoveEvent(self, event):
         if self.pressing:
             delta = event.globalY() - self.startY
-            self.target.setMinimumHeight(max(100, self.startH + delta))
+            self.target.setFixedHeight(max(150, self.startH + delta))
+        self.update()
 
     def mouseReleaseEvent(self, event):
         self.pressing = False
+        self.update()
+
+    def enterEvent(self, event):
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        is_hover = self.underMouse() or self.pressing
+        
+        # 1. Background line (very subtle)
+        line_color = QColor(0, 0, 0, 15) if not is_hover else QColor(0, 120, 212, 60)
+        painter.setPen(QPen(line_color, 1))
+        painter.drawLine(0, self.height() // 2, self.width(), self.height() // 2)
+        
+        # 2. Fluent Pill Handle
+        handle_color = QColor(0, 120, 212) if is_hover else QColor(0, 0, 0, 40)
+        if self.pressing:
+            handle_color = QColor(0, 100, 180) # Darker blue on press
+            
+        painter.setBrush(handle_color)
+        painter.setPen(Qt.NoPen)
+        
+        # Handle animates slightly on hover
+        hw = 40 if is_hover else 32
+        hh = 4 if is_hover else 3
+        
+        x = (self.width() - hw) // 2
+        y = (self.height() - hh) // 2
+        painter.drawRoundedRect(x, y, hw, hh, hh / 2, hh / 2)
 
 class HomeInterface(SingleDirectionScrollArea):
     def __init__(self, parent=None):
@@ -426,8 +464,8 @@ class HomeInterface(SingleDirectionScrollArea):
             self.add_filter_btn.move(x, y)
 
     def setup_ui(self):
-        self.vBoxLayout.setContentsMargins(36, 20, 36, 36)
-        self.vBoxLayout.setSpacing(24)
+        self.vBoxLayout.setContentsMargins(0, 0, 0, 0)
+        self.vBoxLayout.setSpacing(0)
         self.sender_card = CardWidget(self.view)
         s_layout = QVBoxLayout(self.sender_card)
         s_layout.setContentsMargins(20, 16, 20, 16)
@@ -455,8 +493,7 @@ class HomeInterface(SingleDirectionScrollArea):
         self.payload_container.setMinimumHeight(140)
         s_layout.addWidget(self.payload_container)
         s_layout.setStretchFactor(self.payload_container, 1)
-        self.resizer = HeightResizer(self.payload_container, self.sender_card)
-        s_layout.addWidget(self.resizer)
+        
         btn_layout = QHBoxLayout()
         self.save_btn = PushButton(FIF.SAVE, "Save to Library", self.sender_card)
         self.save_btn.clicked.connect(self.on_save_clicked)
@@ -475,6 +512,10 @@ class HomeInterface(SingleDirectionScrollArea):
         s_layout.addLayout(btn_layout)
         self.vBoxLayout.addWidget(self.sender_card)
         self.vBoxLayout.setStretchFactor(self.sender_card, 1)
+
+        self.resizer = Splitter(self.sender_card, self.view)
+        self.vBoxLayout.addWidget(self.resizer)
+
         self.receiver_card = CardWidget(self.view)
         r_layout = QVBoxLayout(self.receiver_card)
         r_layout.setContentsMargins(20, 16, 20, 16)
