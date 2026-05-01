@@ -29,11 +29,11 @@ from qfluentwidgets import (
     CardWidget, FluentIcon as FIF, setTheme, Theme, setFont, InfoBar, InfoBarPosition,
     setThemeColor, FluentWindow, SingleDirectionScrollArea, TitleLabel,
     PrimaryToolButton, ToolButton, TransparentToolButton, FlowLayout, CheckBox,
-    TableWidget, MessageBox, MessageBoxBase
+    TableWidget, MessageBox, MessageBoxBase, ComboBox
 )
 
 class ProtocolEditDialog(MessageBoxBase):
-    def __init__(self, title, name="", port=5005, data="", proto_type="send", freq=1.0, parent=None):
+    def __init__(self, title, name="", port=5005, data="", proto_type="send", freq=1.0, mapping=None, parent=None):
         super().__init__(parent)
         self.titleLabel = SubtitleLabel(title)
         
@@ -51,19 +51,35 @@ class ProtocolEditDialog(MessageBoxBase):
         self.type_choice.addWidget(self.send_radio)
         self.type_choice.addWidget(self.recv_radio)
 
-        self.portInput = SpinBox()
-        self.portInput.setRange(1, 65535)
-        self.portInput.setValue(port)
+        self.portInput = LineEdit()
+        self.portInput.setText(str(port))
+        self.portInput.setPlaceholderText("Port (1-65535)")
         
         self.freqInput = DoubleSpinBox()
         self.freqInput.setRange(0.01, 1000.0)
         self.freqInput.setValue(freq)
         self.freqInput.setSuffix(" Hz")
         
+        # Horizontal layout for Data Input and Type Mapper
+        self.content_layout = QHBoxLayout()
+        
+        # Left Side: JSON Input
         self.dataInput = TextEdit()
         self.dataInput.setPlainText(data)
-        self.dataInput.setPlaceholderText("Protocol Content")
-        self.dataInput.setFixedHeight(150)
+        self.dataInput.setPlaceholderText("Protocol Content (JSON)")
+        self.dataInput.setFixedHeight(250)
+        self.dataInput.textChanged.connect(self.on_json_changed)
+        
+        # Right Side: Type Mapper
+        self.mapper_table = TableWidget()
+        self.mapper_table.setColumnCount(2)
+        self.mapper_table.setHorizontalHeaderLabels(["Key/Index", "Type"])
+        self.mapper_table.setFixedHeight(250)
+        self.mapper_table.horizontalHeader().setStretchLastSection(True)
+        self.mapper_table.verticalHeader().hide()
+        
+        self.content_layout.addWidget(self.dataInput, 1)
+        self.content_layout.addWidget(self.mapper_table, 1)
 
         self.viewLayout.addWidget(self.titleLabel)
         self.viewLayout.addWidget(CaptionLabel("Protocol Name"))
@@ -74,19 +90,178 @@ class ProtocolEditDialog(MessageBoxBase):
         self.viewLayout.addWidget(self.portInput)
         self.viewLayout.addWidget(CaptionLabel("Loop Frequency"))
         self.viewLayout.addWidget(self.freqInput)
-        self.viewLayout.addWidget(CaptionLabel("Protocol Content"))
-        self.viewLayout.addWidget(self.dataInput)
+        self.viewLayout.addWidget(CaptionLabel("Protocol Content & Type Mapping"))
+        self.viewLayout.addLayout(self.content_layout)
         
-        self.widget.setMinimumWidth(450)
+        self.widget.setMinimumWidth(800)
         self.nameInput.setFocus()
 
+        self.type_options = ["Any", "String", "Int", "Double", "Bool", "Object", "Array"]
+        self.current_mapping = mapping if mapping else {}
+        self.on_json_changed() # Initial parse
+
+        self.yesButton.clicked.disconnect()
+        self.yesButton.clicked.connect(self.validate_and_accept)
+
+    def on_json_changed(self):
+        text = self.dataInput.toPlainText().strip()
+        if not text:
+            self.mapper_table.setRowCount(0)
+            return
+        
+        try:
+            data = json.loads(text)
+            self.update_mapper_ui(data)
+        except:
+            pass
+
+    def update_mapper_ui(self, data):
+        self.mapper_table.setRowCount(0)
+        if isinstance(data, dict):
+            for key in data.keys():
+                self._add_mapper_row(str(key))
+        elif isinstance(data, list):
+            for i in range(len(data)):
+                self._add_mapper_row(f"[{i}]")
+
+    def _add_mapper_row(self, key):
+        row = self.mapper_table.rowCount()
+        self.mapper_table.insertRow(row)
+        
+        key_item = QTableWidgetItem(key)
+        key_item.setFlags(Qt.ItemIsEnabled)
+        self.mapper_table.setItem(row, 0, key_item)
+        
+        combo = ComboBox()
+        combo.addItems(self.type_options)
+        
+        # Restore saved type if available
+        saved_type = self.current_mapping.get(key, "Any")
+        if saved_type in self.type_options:
+            combo.setCurrentText(saved_type)
+        else:
+            combo.setCurrentText("Any")
+            
+        self.mapper_table.setCellWidget(row, 1, combo)
+
+    def validate_and_accept(self):
+        data = self.get_data()
+        if not data['name']:
+            self.show_warning("Warning", "Protocol name cannot be empty!")
+            return
+        
+        # Validate Port
+        port_text = self.portInput.text().strip()
+        if not port_text:
+            self.show_warning("Warning", "Port cannot be empty!")
+            return
+        try:
+            p = int(port_text)
+            if not (1 <= p <= 65535):
+                raise ValueError()
+        except ValueError:
+            self.show_warning("Warning", "Invalid port number! Must be a number between 1 and 65535.")
+            return
+
+        payload = data['data']
+        if not payload:
+            self.accept()
+            return
+
+        try:
+            json_obj = json.loads(payload)
+        except json.JSONDecodeError as e:
+            msg = f"Protocol content is not a valid JSON:\n\n{str(e)}\n\nDo you want to save it anyway?"
+            w = MessageBox("Invalid JSON", msg, self.window())
+            if not w.exec():
+                return
+            self.accept()
+            return
+
+        # Strict Type Validation
+        mapping = json.loads(data['mapping']) if data['mapping'] else {}
+        errors = []
+        
+        if isinstance(json_obj, dict):
+            for key, val in json_obj.items():
+                expected = mapping.get(str(key), "Any")
+                if expected == "Any": continue
+                
+                valid = True
+                if expected == "Int":
+                    if not isinstance(val, int) or isinstance(val, bool): valid = False
+                elif expected == "Double":
+                    if not isinstance(val, (int, float)) or isinstance(val, bool): valid = False
+                elif expected == "String":
+                    if not isinstance(val, str): valid = False
+                elif expected == "Bool":
+                    if not isinstance(val, bool): valid = False
+                elif expected == "Object":
+                    if not isinstance(val, dict): valid = False
+                elif expected == "Array":
+                    if not isinstance(val, list): valid = False
+                
+                if not valid:
+                    actual = type(val).__name__
+                    errors.append(f"Key '{key}': Expected {expected}, got {actual}")
+
+        elif isinstance(json_obj, list):
+            for i, val in enumerate(json_obj):
+                key = f"[{i}]"
+                expected = mapping.get(key, "Any")
+                if expected == "Any": continue
+                
+                valid = True
+                if expected == "Int":
+                    if not isinstance(val, int) or isinstance(val, bool): valid = False
+                elif expected == "Double":
+                    if not isinstance(val, (int, float)) or isinstance(val, bool): valid = False
+                elif expected == "String":
+                    if not isinstance(val, str): valid = False
+                elif expected == "Bool":
+                    if not isinstance(val, bool): valid = False
+                elif expected == "Object":
+                    if not isinstance(val, dict): valid = False
+                elif expected == "Array":
+                    if not isinstance(val, list): valid = False
+                
+                if not valid:
+                    actual = type(val).__name__
+                    errors.append(f"Index {i}: Expected {expected}, got {actual}")
+
+        if errors:
+            msg = "Type Mismatch Detected:\n\n" + "\n".join(errors) + "\n\nPlease fix your JSON or change the types."
+            self.show_warning("Type Error", msg)
+            return
+
+        self.accept()
+
+    def show_warning(self, title, content):
+        w = MessageBox(title, content, self.window())
+        w.cancelButton.hide()
+        w.exec()
+
     def get_data(self):
+        port_val = 5005
+        try:
+            port_val = int(self.portInput.text().strip())
+        except: pass
+
+        # Collect mapping
+        mapping = {}
+        for row in range(self.mapper_table.rowCount()):
+            key = self.mapper_table.item(row, 0).text()
+            combo = self.mapper_table.cellWidget(row, 1)
+            if combo:
+                mapping[key] = combo.currentText()
+
         return {
             "name": self.nameInput.text().strip(),
-            "port": self.portInput.value(),
+            "port": port_val,
             "data": self.dataInput.toPlainText().strip(),
             "type": "send" if self.send_radio.isChecked() else "receive",
-            "freq": self.freqInput.value()
+            "freq": self.freqInput.value(),
+            "mapping": json.dumps(mapping) if mapping else None
         }
 
 CONFIG_DIR = os.path.expanduser("~/.qt-udp-tester")
@@ -114,6 +289,7 @@ class DatabaseManager:
                     data TEXT NOT NULL,
                     type TEXT NOT NULL DEFAULT 'send',
                     freq REAL NOT NULL DEFAULT 1.0,
+                    mapping TEXT,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -121,7 +297,8 @@ class DatabaseManager:
             cols = [
                 ('port', 'INTEGER NOT NULL DEFAULT 5005'),
                 ('type', "TEXT NOT NULL DEFAULT 'send'"),
-                ('freq', 'REAL NOT NULL DEFAULT 1.0')
+                ('freq', 'REAL NOT NULL DEFAULT 1.0'),
+                ('mapping', 'TEXT')
             ]
             for col_name, col_def in cols:
                 try:
@@ -134,19 +311,19 @@ class DatabaseManager:
         with self._lock:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
-            cursor.execute('SELECT name, data, port, type, freq FROM protocols ORDER BY updated_at DESC')
+            cursor.execute('SELECT name, data, port, type, freq, mapping FROM protocols ORDER BY updated_at DESC')
             rows = cursor.fetchall()
             conn.close()
-            return [{"name": r[0], "data": r[1], "port": r[2], "type": r[3], "freq": r[4]} for r in rows]
+            return [{"name": r[0], "data": r[1], "port": r[2], "type": r[3], "freq": r[4], "mapping": r[5]} for r in rows]
 
-    def save_protocol(self, name, data, port=5005, proto_type='send', freq=1.0):
+    def save_protocol(self, name, data, port=5005, proto_type='send', freq=1.0, mapping=None):
         with self._lock:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT OR REPLACE INTO protocols (name, data, port, type, freq, updated_at) 
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
-            ''', (name, data, port, proto_type, freq))
+                INSERT OR REPLACE INTO protocols (name, data, port, type, freq, mapping, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (name, data, port, proto_type, freq, mapping))
             conn.commit()
             conn.close()
 
@@ -611,8 +788,21 @@ class HomeInterface(SingleDirectionScrollArea):
             self.window().show_toast("Error", str(e), True)
 
     def on_save_clicked(self):
+        current_payload = self.payload_container.text_edit.toPlainText().strip()
+        if not current_payload:
+            self.window().show_toast("Warning", "Payload is empty", True)
+            return
+
+        # Pre-validate JSON
+        try:
+            json.loads(current_payload)
+        except json.JSONDecodeError as e:
+            msg = f"The current payload is not a valid JSON:\n\n{str(e)}\n\nDo you still want to proceed to save it?"
+            w = MessageBox("Invalid JSON", msg, self.window())
+            if not w.exec():
+                return
+
         current_port = self.target_port.value()
-        current_payload = self.payload_container.text_edit.toPlainText()
         w = ProtocolEditDialog("Save to Library", port=current_port, data=current_payload, parent=self.window())
         if w.exec():
             res = w.get_data()
@@ -739,9 +929,9 @@ class ProtocolInterface(SingleDirectionScrollArea):
 
     def load_protocols(self, protocols):
         self.table.setRowCount(0)
-        for p in protocols: self._add_row(p['name'], p['data'], p.get('port', 5005), p.get('type', 'send'), p.get('freq', 1.0))
+        for p in protocols: self._add_row(p['name'], p['data'], p.get('port', 5005), p.get('type', 'send'), p.get('freq', 1.0), p.get('mapping'))
 
-    def _add_row(self, name, data, port, proto_type, freq):
+    def _add_row(self, name, data, port, proto_type, freq, mapping_str):
         row = self.table.rowCount()
         self.table.insertRow(row)
         name_item = QTableWidgetItem(name); name_item.setTextAlignment(Qt.AlignCenter); self.table.setItem(row, 0, name_item)
@@ -755,13 +945,23 @@ class ProtocolInterface(SingleDirectionScrollArea):
         preview_item = QTableWidgetItem(preview); preview_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft); self.table.setItem(row, 4, preview_item)
         btn_widget = QWidget(); btn_layout = QHBoxLayout(btn_widget); btn_layout.setContentsMargins(10, 5, 10, 5); btn_layout.setSpacing(8); btn_layout.setAlignment(Qt.AlignCenter)
         action_btn = ToolButton(FIF.SYNC, btn_widget); action_btn.setCheckable(True); action_btn.setToolTip("Start Loop Sending")
+        if name in self.window().loop_timers:
+            action_btn.setChecked(True)
+            action_btn.setIcon(FIF.PAUSE)
+            
         def on_action_toggled(checked):
             if checked: action_btn.setIcon(FIF.PAUSE); self.start_loop_send.emit(name, port, freq)
             else: action_btn.setIcon(FIF.SYNC); self.stop_loop_send.emit(name)
         action_btn.clicked.connect(lambda: on_action_toggled(action_btn.isChecked()))
         send_btn = ToolButton(FIF.SEND, btn_widget); send_btn.setToolTip(f"Send Once to Port {port}"); send_btn.clicked.connect(lambda: self.window().send_custom_data(data, port))
         use_btn = ToolButton(FIF.PLAY, btn_widget); use_btn.setToolTip("Apply to Sender"); use_btn.clicked.connect(lambda: self.protocol_selected.emit(data))
-        edit_btn = ToolButton(FIF.EDIT, btn_widget); edit_btn.setToolTip("Edit Protocol"); edit_btn.clicked.connect(lambda: self.on_edit_clicked(row, name, port, data, proto_type, freq))
+        
+        mapping = None
+        if mapping_str:
+            try: mapping = json.loads(mapping_str)
+            except: pass
+            
+        edit_btn = ToolButton(FIF.EDIT, btn_widget); edit_btn.setToolTip("Edit Protocol"); edit_btn.clicked.connect(lambda: self.on_edit_clicked(row, name, port, data, proto_type, freq, mapping))
         del_btn = ToolButton(FIF.DELETE, btn_widget); del_btn.setToolTip("Delete"); del_btn.clicked.connect(lambda: self.on_delete_clicked(name))
         btn_layout.addWidget(action_btn); btn_layout.addWidget(send_btn); btn_layout.addWidget(use_btn); btn_layout.addWidget(edit_btn); btn_layout.addWidget(del_btn)
         self.table.setCellWidget(row, 5, btn_widget)
@@ -772,15 +972,15 @@ class ProtocolInterface(SingleDirectionScrollArea):
         w = ProtocolEditDialog("New Protocol", port=current_port, data=current_payload, parent=self.window())
         if w.exec():
             res = w.get_data()
-            if res['name']: self.window().save_protocol(res['name'], res['data'], res['port'], res['type'], res['freq'])
+            if res['name']: self.window().save_protocol(res['name'], res['data'], res['port'], res['type'], res['freq'], res.get('mapping'))
 
-    def on_edit_clicked(self, row, old_name, old_port, old_data, old_type, old_freq):
-        w = ProtocolEditDialog("Edit Protocol", name=old_name, port=old_port, data=old_data, proto_type=old_type, freq=old_freq, parent=self.window())
+    def on_edit_clicked(self, row, old_name, old_port, old_data, old_type, old_freq, old_mapping):
+        w = ProtocolEditDialog("Edit Protocol", name=old_name, port=old_port, data=old_data, proto_type=old_type, freq=old_freq, mapping=old_mapping, parent=self.window())
         if w.exec():
             res = w.get_data()
             if res['name']:
                 if res['name'] != old_name: self.window().db.delete_protocol(old_name)
-                self.window().save_protocol(res['name'], res['data'], res['port'], res['type'], res['freq'])
+                self.window().save_protocol(res['name'], res['data'], res['port'], res['type'], res['freq'], res.get('mapping'))
 
     def on_delete_clicked(self, name):
         w = MessageBox("Confirm Delete", f"Delete protocol '{name}'?", self.window())
@@ -793,6 +993,43 @@ class UDPToolApp(FluentWindow):
         setThemeColor('#0078d4')
         self.setWindowTitle(f"QT-UDP-Tester v{VERSION}")
         self.resize(1150, 920)
+
+        # Global styles for status buttons to ensure padding is NEVER lost
+        common_style = "padding: 5px 12px 6px 36px; border-radius: 5px; font-size: 14px;"
+        self.setStyleSheet(f"""
+            PrimaryPushButton {{
+                {common_style}
+            }}
+            PrimaryPushButton[status="danger"] {{
+                background-color: #d83b01;
+                border: 1px solid #d83b01;
+                border-bottom: 1px solid #b23000;
+                color: white;
+                {common_style}
+            }}
+            PrimaryPushButton[status="danger"]:hover {{
+                background-color: #ef4411;
+                border: 1px solid #ef4411;
+            }}
+            PrimaryPushButton[status="danger"]:pressed {{
+                background-color: #f15c30;
+            }}
+            
+            PrimaryPushButton[status="success"] {{
+                background-color: #107c10;
+                border: 1px solid #107c10;
+                border-bottom: 1px solid #0e6c0e;
+                color: white;
+                {common_style}
+            }}
+            PrimaryPushButton[status="success"]:hover {{
+                background-color: #1a921a;
+                border: 1px solid #1a921a;
+            }}
+            PrimaryPushButton[status="success"]:pressed {{
+                background-color: #2fb12f;
+            }}
+        """)
 
         # 设置 1px 的内边距，确保子组件（如滚动条）不会盖住我们手动画的 1px 边框
         self.setContentsMargins(1, 1, 1, 1)
@@ -817,6 +1054,7 @@ class UDPToolApp(FluentWindow):
         self.protocol_interface.stop_loop_send.connect(self.stop_protocol_loop)
         self.addSubInterface(self.home_interface, FIF.HOME, "Control Center")
         self.addSubInterface(self.protocol_interface, QIcon(resource_path("icons/database.svg")), "Protocol Library")
+        
         self.refresh_protocols()
 
     def paintEvent(self, e):
@@ -847,7 +1085,7 @@ class UDPToolApp(FluentWindow):
         timer = QTimer(self)
         protocols = self.db.get_all_protocols()
         data = next((p['data'] for p in protocols if p['name'] == name), "")
-        timer.timeout.connect(lambda: self.send_custom_data(data, port))
+        timer.timeout.connect(lambda: self.send_custom_data(data, port, show_notification=False))
         timer.start(int(1000 / freq))
         self.loop_timers[name] = timer
         self.show_toast("Loop Started", f"Sending '{name}' at {freq}Hz")
@@ -856,13 +1094,21 @@ class UDPToolApp(FluentWindow):
         if name in self.loop_timers: self.loop_timers[name].stop(); del self.loop_timers[name]; self.show_toast("Loop Stopped", f"Stopped sending '{name}'")
 
     def apply_protocol(self, data): self.home_interface.payload_container.text_edit.setPlainText(data); self.switchTo(self.home_interface); self.show_toast("Applied", "Protocol content loaded")
-    def save_protocol(self, name, data, port=5005, proto_type='send', freq=1.0): self.db.save_protocol(name, data, port, proto_type, freq); self.refresh_protocols(); self.show_toast("Saved", f"Protocol '{name}' saved to library")
+    def save_protocol(self, name, data, port=5005, proto_type='send', freq=1.0, mapping=None): 
+        self.db.save_protocol(name, data, port, proto_type, freq, mapping)
+        self.refresh_protocols()
+        self.show_toast("Saved", f"Protocol '{name}' saved to library")
     def update_protocol(self, old_name, new_name): self.db.update_name(old_name, new_name); self.refresh_protocols(); self.show_toast("Updated", f"Protocol renamed to '{new_name}'")
     def delete_protocol(self, name): self.db.delete_protocol(name); self.refresh_protocols(); self.show_toast("Deleted", f"Protocol '{name}' removed")
     def refresh_protocols(self): protocols = self.db.get_all_protocols(); self.protocol_interface.load_protocols(protocols)
-    def send_packet(self): data = self.home_interface.payload_container.text_edit.toPlainText(); self.send_custom_data(data)
+    def send_packet(self): 
+        data = self.home_interface.payload_container.text_edit.toPlainText()
+        # If in loop, don't show toast for every manual "Send Now" if that's preferred, 
+        # but usually "Send Now" button should still show toast. 
+        # Loop timers will pass False.
+        self.send_custom_data(data)
     
-    def send_custom_data(self, data_str, target_port=None):
+    def send_custom_data(self, data_str, target_port=None, show_notification=True):
         try:
             sock = self._get_send_socket()
             if not sock: return
@@ -870,29 +1116,82 @@ class UDPToolApp(FluentWindow):
             ip = self.home_interface.target_ip.text()
             data = data_str.encode('utf-8')
             sock.sendto(data, (ip, target_port))
-            self.show_toast("Success", f"Sent to port {target_port}")
+            if show_notification:
+                self.show_toast("Success", f"Sent to port {target_port}")
         except Exception as e: self.show_toast("Error", str(e), True)
 
     def show_toast(self, title, content, is_error=False):
         func = InfoBar.error if is_error else InfoBar.success
-        func(title=title, content=content, orient=Qt.Horizontal, isClosable=True, position=InfoBarPosition.TOP_RIGHT, duration=1500, parent=self)
+        func(title=title, content=content, orient=Qt.Horizontal, isClosable=True, position=InfoBarPosition.TOP, duration=1500, parent=self)
 
     def update_live_timer(self):
         if self.send_timer.isActive(): self.send_timer.start(int(1000 / self.home_interface.send_freq.value()))
 
+    def set_button_status_color(self, btn, color_type):
+        """
+        Directly set the button style to ensure color changes are applied immediately
+        and padding is never lost. Includes a 'default' state to mimic Fluent Blue.
+        """
+        common = "padding: 5px 12px 6px 36px; border-radius: 5px; font-size: 14px;"
+        
+        if color_type == 'danger':
+            bg, hover, pressed = "#d83b01", "#ef4411", "#f15c30"
+        elif color_type == 'success':
+            bg, hover, pressed = "#107c10", "#1a921a", "#2fb12f"
+        else:
+            # Standard Fluent Blue fallback
+            bg, hover, pressed = "#0078d4", "#0086f0", "#0099ff"
+            
+        btn.setStyleSheet(f"""
+            PrimaryPushButton {{
+                background-color: {bg};
+                border: 1px solid {bg};
+                border-bottom: 2px solid rgba(0, 0, 0, 0.15);
+                color: white;
+                {common}
+            }}
+            PrimaryPushButton:hover {{
+                background-color: {hover};
+                border: 1px solid {hover};
+            }}
+            PrimaryPushButton:pressed {{
+                background-color: {pressed};
+                color: rgba(255, 255, 255, 0.63);
+            }}
+        """)
+
     def toggle_send_loop(self):
         btn = self.home_interface.start_send_btn
-        if self.send_timer.isActive(): self.send_timer.stop(); btn.setText("Start Loop"); btn.setIcon(FIF.PLAY)
-        else: self.send_timer.start(int(1000 / self.home_interface.send_freq.value())); btn.setText("Stop Loop"); btn.setIcon(FIF.PAUSE)
+        if self.send_timer.isActive(): 
+            print("Sender Button Clicked: Current Status = STOP (Looping), switching to START")
+            self.send_timer.stop()
+            btn.setText("Start Loop")
+            btn.setIcon(FIF.PLAY)
+            self.set_button_status_color(btn, 'default')
+        else: 
+            print("Sender Button Clicked: Current Status = START (Idle), switching to STOP")
+            self.send_timer.start(int(1000 / self.home_interface.send_freq.value()))
+            btn.setText("Stop Loop")
+            btn.setIcon(FIF.PAUSE)
+            self.set_button_status_color(btn, 'danger')
+
+    def send_packet(self): 
+        data = self.home_interface.payload_container.text_edit.toPlainText()
+        # Main loop send (from start_send_btn) should not show notifications
+        show = not self.send_timer.isActive()
+        self.send_custom_data(data, show_notification=show)
 
     def toggle_receiver(self):
         btn = self.home_interface.start_recv_btn
         if self.recv_thread and self.recv_thread.isRunning():
+            print("Receiver Button Clicked: Current Status = STOP (Listening), switching to START")
             self.recv_thread.stop()
             btn.setText("Start Listening")
             btn.setIcon(FIF.WIFI)
+            self.set_button_status_color(btn, 'default')
             self.home_interface.listen_port.setEnabled(True)
         else:
+            print("Receiver Button Clicked: Current Status = START (Idle), switching to STOP")
             port_text = self.home_interface.listen_port.text().strip()
             if not port_text: self.show_toast("Error", "Please enter at least one port", True); return
             ports = []
@@ -913,12 +1212,14 @@ class UDPToolApp(FluentWindow):
             self.recv_thread.error_occurred.connect(self.on_receiver_error)
             self.recv_thread.start()
             btn.setText("Stop Listening"); btn.setIcon(FIF.CLOSE)
+            self.set_button_status_color(btn, 'danger')
 
     def on_receiver_error(self, error_msg):
         self.show_toast("Receiver Error", error_msg, is_error=True)
         btn = self.home_interface.start_recv_btn
         btn.setText("Start Listening")
         btn.setIcon(FIF.WIFI)
+        self.set_button_status_color(btn, 'default')
         self.home_interface.listen_port.setEnabled(True)
 
     def on_packets_received(self, packets):
