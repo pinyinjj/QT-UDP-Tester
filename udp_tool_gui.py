@@ -1102,12 +1102,24 @@ class UDPToolApp(FluentWindow):
     def delete_protocol(self, name): self.db.delete_protocol(name); self.refresh_protocols(); self.show_toast("Deleted", f"Protocol '{name}' removed")
     def refresh_protocols(self): protocols = self.db.get_all_protocols(); self.protocol_interface.load_protocols(protocols)
     def send_packet(self): 
+        ip = self.home_interface.target_ip.text().strip()
+        is_manual = not self.send_timer.isActive()
+        
+        # Validate IP for manual sending
+        if is_manual and not self.is_valid_ip(ip):
+            w = MessageBox(
+                "Invalid IP Address", 
+                f"The target IP address '{ip}' is not a valid IPv4 address.\n\nPlease enter a correct IP (e.g., 127.0.0.1 or 255.255.255.255).", 
+                self
+            )
+            w.cancelButton.hide()
+            w.exec()
+            return
+
         data = self.home_interface.payload_container.text_edit.toPlainText()
-        # If in loop, don't show toast for every manual "Send Now" if that's preferred, 
-        # but usually "Send Now" button should still show toast. 
-        # Loop timers will pass False.
-        self.send_custom_data(data)
-    
+        # Main loop send (from start_send_btn) should not show notifications
+        self.send_custom_data(data, show_notification=is_manual)
+
     def send_custom_data(self, data_str, target_port=None, show_notification=True):
         try:
             sock = self._get_send_socket()
@@ -1160,6 +1172,15 @@ class UDPToolApp(FluentWindow):
             }}
         """)
 
+    def is_valid_ip(self, ip):
+        """ Validate IPv4 address """
+        if not ip: return False
+        try:
+            socket.inet_aton(ip)
+            return ip.count('.') == 3
+        except socket.error:
+            return False
+
     def toggle_send_loop(self):
         btn = self.home_interface.start_send_btn
         if self.send_timer.isActive(): 
@@ -1168,18 +1189,29 @@ class UDPToolApp(FluentWindow):
             btn.setText("Start Loop")
             btn.setIcon(FIF.PLAY)
             self.set_button_status_color(btn, 'default')
+            # Enable inputs when stopped
+            self.home_interface.target_ip.setEnabled(True)
+            self.home_interface.target_port.setEnabled(True)
         else: 
             print("Sender Button Clicked: Current Status = START (Idle), switching to STOP")
+            ip = self.home_interface.target_ip.text().strip()
+            if not self.is_valid_ip(ip):
+                w = MessageBox(
+                    "Invalid IP Address", 
+                    f"The target IP address '{ip}' is not a valid IPv4 address.\n\nPlease enter a correct IP (e.g., 127.0.0.1 or 255.255.255.255) before starting the loop.", 
+                    self
+                )
+                w.cancelButton.hide()
+                w.exec()
+                return
+
             self.send_timer.start(int(1000 / self.home_interface.send_freq.value()))
             btn.setText("Stop Loop")
             btn.setIcon(FIF.PAUSE)
             self.set_button_status_color(btn, 'danger')
-
-    def send_packet(self): 
-        data = self.home_interface.payload_container.text_edit.toPlainText()
-        # Main loop send (from start_send_btn) should not show notifications
-        show = not self.send_timer.isActive()
-        self.send_custom_data(data, show_notification=show)
+            # Disable inputs when running
+            self.home_interface.target_ip.setEnabled(False)
+            self.home_interface.target_port.setEnabled(False)
 
     def toggle_receiver(self):
         btn = self.home_interface.start_recv_btn

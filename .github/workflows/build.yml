@@ -74,7 +74,11 @@ jobs:
 
     - name: Build EXE
       run: |
-        pyinstaller --noconsole --onefile --name "QT-UDP-Tester" --hidden-import PyQt5.sip --upx-dir=$env:TEMP\upx\upx-3.96-win64 udp_tool_gui.py
+        pyinstaller --noconsole --onefile --name "QT-UDP-Tester" \
+          --hidden-import PyQt5.sip \
+          --hidden-import PyQt5.QtSvg \
+          --add-data "icons;icons" \
+          --upx-dir=$env:TEMP\upx\upx-3.96-win64 udp_tool_gui.py
 
     - name: Upload EXE Artifact
       uses: actions/upload-artifact@v4
