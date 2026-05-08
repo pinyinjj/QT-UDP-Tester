@@ -402,12 +402,38 @@ class ReceiverThread(QThread):
         self.running = False
         self.wait()
 
+class DeviceScannerThread(QThread):
+    devices_found = pyqtSignal(list)
+    def run(self):
+        import subprocess
+        import re
+        import platform
+        ips = []
+        try:
+            if platform.system() == "Windows":
+                # Use arp -a for Windows
+                output = subprocess.check_output(["arp", "-a"], timeout=5).decode('gbk', errors='ignore')
+            else:
+                # For Linux/macOS
+                output = subprocess.check_output(["arp", "-n"], timeout=5).decode('utf-8', errors='ignore')
+            
+            # Find all IPv4 addresses
+            found = re.findall(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', output)
+            for ip in found:
+                # Filter out broadcast/multicast/local loopback
+                if not ip.endswith('.255') and not ip.startswith('224.') and \
+                   ip not in ['255.255.255.255', '127.0.0.1', '0.0.0.0']:
+                    if ip not in ips: ips.append(ip)
+        except: pass
+        self.devices_found.emit(ips)
+
 class FilterTag(CardWidget):
     toggled = pyqtSignal(bool)
     deleted = pyqtSignal(str)
 
-    def __init__(self, text, parent=None):
+    def __init__(self, text, parent=None, is_static=False):
         super().__init__(parent=parent)
+        self.is_static = is_static
         self.filter_text = text
         self.setFixedHeight(32)
         self.layout = QHBoxLayout(self)
@@ -415,6 +441,27 @@ class FilterTag(CardWidget):
         self.layout.setSpacing(6)
         self.checkbox = CheckBox(text, self)
         self.checkbox.stateChanged.connect(lambda s: self.toggled.emit(s == Qt.Checked))
+        
+        if is_static:
+            # Prevent checkbox from receiving hover events
+            self.checkbox.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            self.setCursor(Qt.ArrowCursor)
+            
+            # Explicitly override the CardWidget background to never change on hover
+            self.setStyleSheet("""
+                FilterTag {
+                    background-color: rgba(0, 0, 0, 0.03); 
+                    border: 1px solid rgba(0, 0, 0, 0.08); 
+                    border-radius: 6px;
+                }
+                FilterTag:hover {
+                    background-color: rgba(0, 0, 0, 0.03); 
+                    border: 1px solid rgba(0, 0, 0, 0.08); 
+                }
+            """)
+        else:
+            self.setCursor(Qt.PointingHandCursor)
+
         self.layout.addWidget(self.checkbox)
         self.delete_btn = TransparentToolButton(FIF.CLOSE, self)
         self.delete_btn.setFixedSize(20, 20)
@@ -422,14 +469,21 @@ class FilterTag(CardWidget):
         self.delete_btn.setVisible(False)
         self.delete_btn.clicked.connect(lambda: self.deleted.emit(self.filter_text))
         self.layout.addWidget(self.delete_btn)
-        self.setCursor(Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        # Allow toggling checkbox by clicking the card if it's static
+        if self.is_static and event.button() == Qt.LeftButton:
+            self.checkbox.setChecked(not self.checkbox.isChecked())
+        super().mousePressEvent(event)
 
     def enterEvent(self, event):
-        self.delete_btn.setVisible(True)
+        if not self.is_static:
+            self.delete_btn.setVisible(True)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.delete_btn.setVisible(False)
+        if not self.is_static:
+            self.delete_btn.setVisible(False)
         super().leaveEvent(event)
 
     def isChecked(self):
@@ -441,7 +495,8 @@ class AnimatedTagContainer(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.tag_area = QWidget(self)
-        self.tag_layout = FlowLayout(self.tag_area, needAni=True)
+        # Disable FlowLayout's internal animation to prevent severe lag during container expansion
+        self.tag_layout = FlowLayout(self.tag_area, needAni=False) 
         self.tag_layout.setContentsMargins(0, 5, 0, 5)
         self.layout.addWidget(self.tag_area)
         self.animation = QPropertyAnimation(self, b"maximumHeight")
@@ -623,6 +678,7 @@ class HomeInterface(SingleDirectionScrollArea):
         self.view = QWidget(self)
         self.vBoxLayout = QVBoxLayout(self.view)
         self.filter_tags = []
+        self.target_ip_tags = []
         self.setup_ui()
         self.setWidget(self.view)
         self.setWidgetResizable(True)
@@ -653,6 +709,7 @@ class HomeInterface(SingleDirectionScrollArea):
         self.sender_card = CardWidget(self.view)
         s_layout = QVBoxLayout(self.sender_card)
         s_layout.setContentsMargins(20, 16, 20, 16)
+        s_layout.setSpacing(12)
         s_layout.addWidget(SubtitleLabel("Sender"))
         cfg_layout = QHBoxLayout()
         self.target_ip = LineEdit(self.sender_card)
@@ -670,7 +727,17 @@ class HomeInterface(SingleDirectionScrollArea):
         cfg_layout.addWidget(self.target_port, 1)
         cfg_layout.addWidget(CaptionLabel("Freq"))
         cfg_layout.addWidget(self.send_freq, 1)
+        
+        cfg_layout.addSpacing(10)
+        self.detect_btn = PushButton(FIF.SEARCH, "Scan Network", self.sender_card)
+        self.detect_btn.setFixedWidth(140)
+        cfg_layout.addWidget(self.detect_btn)
+        
         s_layout.addLayout(cfg_layout)
+
+        self.target_tag_container = AnimatedTagContainer(self.sender_card)
+        s_layout.addWidget(self.target_tag_container)
+
         s_layout.addWidget(StrongBodyLabel("Message Payload"))
         self.payload_container = FontAdjustableTextEdit(self.sender_card)
         self.payload_container.text_edit.setPlaceholderText(r'e.g. {"cmd":"ping","data":0}')
@@ -831,6 +898,25 @@ class HomeInterface(SingleDirectionScrollArea):
                 break
         if not self.filter_tags: self.tag_container.toggle(False)
         self.apply_log_filters()
+        self.save_config()
+
+    def add_target_ip_tag(self, ip, save=True):
+        if any(tag.filter_text == ip for tag in self.target_ip_tags): return
+        tag = FilterTag(ip, self.target_tag_container.tag_area, is_static=True) # Use unified tag
+        tag.deleted.connect(self.remove_target_ip_tag)
+        self.target_tag_container.tag_layout.addWidget(tag)
+        self.target_ip_tags.append(tag)
+        if len(self.target_ip_tags) == 1: self.target_tag_container.toggle(True)
+        if save: self.save_config()
+
+    def remove_target_ip_tag(self, ip):
+        for tag in self.target_ip_tags[:]:
+            if tag.filter_text == ip:
+                self.target_tag_container.tag_layout.removeWidget(tag)
+                tag.deleteLater()
+                self.target_ip_tags.remove(tag)
+                break
+        if not self.target_ip_tags: self.target_tag_container.toggle(False)
         self.save_config()
 
     def apply_log_filters(self):
@@ -1041,6 +1127,7 @@ class UDPToolApp(FluentWindow):
         self.send_timer = QTimer()
         self.send_timer.timeout.connect(self.send_packet)
         self.recv_thread = None
+        self.scanner_thread = None
         self._shared_send_socket = None # Persistent socket
         self.MAX_LOG_ROWS = 1000
 
@@ -1048,6 +1135,7 @@ class UDPToolApp(FluentWindow):
         hi.send_once_btn.clicked.connect(self.send_packet)
         hi.start_send_btn.clicked.connect(self.toggle_send_loop)
         hi.start_recv_btn.clicked.connect(self.toggle_receiver)
+        hi.detect_btn.clicked.connect(self.detect_devices)
         hi.send_freq.valueChanged.connect(self.update_live_timer)
         self.protocol_interface.protocol_selected.connect(self.apply_protocol)
         self.protocol_interface.start_loop_send.connect(self.start_protocol_loop)
@@ -1116,35 +1204,59 @@ class UDPToolApp(FluentWindow):
     def update_protocol(self, old_name, new_name): self.db.update_name(old_name, new_name); self.refresh_protocols(); self.show_toast("Updated", f"Protocol renamed to '{new_name}'")
     def delete_protocol(self, name): self.db.delete_protocol(name); self.refresh_protocols(); self.show_toast("Deleted", f"Protocol '{name}' removed")
     def refresh_protocols(self): protocols = self.db.get_all_protocols(); self.protocol_interface.load_protocols(protocols)
-    def send_packet(self): 
-        ip = self.home_interface.target_ip.text().strip()
-        is_manual = not self.send_timer.isActive()
-        
-        # Validate IP for manual sending
-        if is_manual and not self.is_valid_ip(ip):
-            w = MessageBox(
-                "Invalid IP Address", 
-                f"The target IP address '{ip}' is not a valid IPv4 address.\n\nPlease enter a correct IP (e.g., 127.0.0.1 or 255.255.255.255).", 
-                self
-            )
-            w.cancelButton.hide()
-            w.exec()
+    
+    def detect_devices(self):
+        if self.scanner_thread and self.scanner_thread.isRunning(): return
+        self.home_interface.detect_btn.setText("Scanning...")
+        self.scanner_thread = DeviceScannerThread()
+        self.scanner_thread.devices_found.connect(self.on_devices_found)
+        self.scanner_thread.finished.connect(lambda: self.home_interface.detect_btn.setText("Scan Network"))
+        self.scanner_thread.start()
+
+    def on_devices_found(self, ips):
+        if not ips:
+            self.show_toast("Info", "No other devices found in local network", True)
             return
+        for ip in ips:
+            self.home_interface.add_target_ip_tag(ip)
+        self.show_toast("Success", f"Found {len(ips)} potential target devices")
 
+    def send_packet(self): 
+        is_manual = not self.send_timer.isActive()
         data = self.home_interface.payload_container.text_edit.toPlainText()
-        # Main loop send (from start_send_btn) should not show notifications
-        self.send_custom_data(data, show_notification=is_manual)
+        
+        # Check active target IP tags
+        active_ips = [tag.filter_text for tag in self.home_interface.target_ip_tags if tag.checkbox.isChecked()]
+        
+        if not active_ips:
+            # Fallback to manual IP input
+            ip = self.home_interface.target_ip.text().strip()
+            if is_manual and not self.is_valid_ip(ip):
+                w = MessageBox(
+                    "Invalid IP Address", 
+                    f"The target IP address '{ip}' is not a valid IPv4 address.\n\nPlease enter a correct IP (e.g., 127.0.0.1 or 255.255.255.255).", 
+                    self
+                )
+                w.cancelButton.hide()
+                w.exec()
+                return
+            self.send_custom_data(data, target_ip=ip, show_notification=is_manual)
+        else:
+            # Send to all selected IPs
+            for ip in active_ips:
+                self.send_custom_data(data, target_ip=ip, show_notification=is_manual)
 
-    def send_custom_data(self, data_str, target_port=None, show_notification=True):
+    def send_custom_data(self, data_str, target_port=None, target_ip=None, show_notification=True):
         try:
             sock = self._get_send_socket()
             if not sock: return
             if target_port is None: target_port = self.home_interface.target_port.value()
-            ip = self.home_interface.target_ip.text()
+            if target_ip is None: target_ip = self.home_interface.target_ip.text().strip()
+            
             data = data_str.encode('utf-8')
-            sock.sendto(data, (ip, target_port))
+            sock.sendto(data, (target_ip, target_port))
             if show_notification:
-                self.show_toast("Success", f"Sent to port {target_port}")
+                self.show_toast("Success", f"Sent to {target_ip}:{target_port}")
         except Exception as e: self.show_toast("Error", str(e), True)
 
     def show_toast(self, title, content, is_error=False):
