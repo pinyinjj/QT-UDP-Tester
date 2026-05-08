@@ -1055,9 +1055,20 @@ class UDPToolApp(FluentWindow):
         self.addSubInterface(self.home_interface, FIF.HOME, "Control Center")
         self.addSubInterface(self.protocol_interface, QIcon(resource_path("icons/database.svg")), "Protocol Library")
         
+        # Center navigation items vertically in the sidebar
+        # 1. Set scrollArea stretch factor to 0 so it only takes needed space
+        self.navigationInterface.panel.vBoxLayout.setStretchFactor(self.navigationInterface.panel.scrollArea, 0)
+        # 2. Add stretches to the main vertical layout to push items to the center
+        self.navigationInterface.panel.vBoxLayout.insertStretch(0, 1)
+        self.navigationInterface.panel.vBoxLayout.addStretch(1)
+
         # Hide back button and menu button
-        self.navigationInterface.setBackButtonVisible(False)
+        self.navigationInterface.setReturnButtonVisible(False)
         self.navigationInterface.setMenuButtonVisible(False)
+        
+        # Keep drawer closed
+        self.navigationInterface.panel.setCollapsible(False)
+        self.navigationInterface.panel.collapse()
         
         self.refresh_protocols()
 
