@@ -446,19 +446,6 @@ class FilterTag(CardWidget):
             # Prevent checkbox from receiving hover events
             self.checkbox.setAttribute(Qt.WA_TransparentForMouseEvents, True)
             self.setCursor(Qt.ArrowCursor)
-            
-            # Explicitly override the CardWidget background to never change on hover
-            self.setStyleSheet("""
-                FilterTag {
-                    background-color: rgba(0, 0, 0, 0.03); 
-                    border: 1px solid rgba(0, 0, 0, 0.08); 
-                    border-radius: 6px;
-                }
-                FilterTag:hover {
-                    background-color: rgba(0, 0, 0, 0.03); 
-                    border: 1px solid rgba(0, 0, 0, 0.08); 
-                }
-            """)
         else:
             self.setCursor(Qt.PointingHandCursor)
 
@@ -479,24 +466,24 @@ class FilterTag(CardWidget):
     def enterEvent(self, event):
         if not self.is_static:
             self.delete_btn.setVisible(True)
-        super().enterEvent(event)
+            super().enterEvent(event)
 
     def leaveEvent(self, event):
         if not self.is_static:
             self.delete_btn.setVisible(False)
-        super().leaveEvent(event)
+            super().leaveEvent(event)
 
     def isChecked(self):
         return self.checkbox.isChecked()
 
 class AnimatedTagContainer(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, enable_ani=True):
         super().__init__(parent=parent)
+        self.enable_ani = enable_ani
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.tag_area = QWidget(self)
-        # Disable FlowLayout's internal animation to prevent severe lag during container expansion
-        self.tag_layout = FlowLayout(self.tag_area, needAni=False) 
+        self.tag_layout = FlowLayout(self.tag_area, needAni=self.enable_ani) 
         self.tag_layout.setContentsMargins(0, 5, 0, 5)
         self.layout.addWidget(self.tag_area)
         self.animation = QPropertyAnimation(self, b"maximumHeight")
@@ -510,6 +497,12 @@ class AnimatedTagContainer(QWidget):
         self.is_expanded = expand
         start = 0 if expand else 80
         end = 80 if expand else 0
+        
+        if not self.enable_ani:
+            self.setMaximumHeight(end)
+            self.setMinimumHeight(end)
+            return
+
         self.animation.setStartValue(start)
         self.animation.setEndValue(end)
         if expand:
@@ -735,7 +728,7 @@ class HomeInterface(SingleDirectionScrollArea):
         
         s_layout.addLayout(cfg_layout)
 
-        self.target_tag_container = AnimatedTagContainer(self.sender_card)
+        self.target_tag_container = AnimatedTagContainer(self.sender_card, enable_ani=False)
         s_layout.addWidget(self.target_tag_container)
 
         s_layout.addWidget(StrongBodyLabel("Message Payload"))
@@ -1218,7 +1211,8 @@ class UDPToolApp(FluentWindow):
             self.show_toast("Info", "No other devices found in local network", True)
             return
         for ip in ips:
-            self.home_interface.add_target_ip_tag(ip)
+            self.home_interface.add_target_ip_tag(ip, save=False)
+        self.home_interface.save_config()
         self.show_toast("Success", f"Found {len(ips)} potential target devices")
 
     def send_packet(self): 
