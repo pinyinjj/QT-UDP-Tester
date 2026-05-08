@@ -29,7 +29,7 @@ from qfluentwidgets import (
     CardWidget, FluentIcon as FIF, setTheme, Theme, setFont, InfoBar, InfoBarPosition,
     setThemeColor, FluentWindow, SingleDirectionScrollArea, TitleLabel,
     PrimaryToolButton, ToolButton, TransparentToolButton, FlowLayout, CheckBox,
-    TableWidget, MessageBox, MessageBoxBase, ComboBox
+    TableWidget, MessageBox, MessageBoxBase, ComboBox, SmoothMode
 )
 
 class ProtocolEditDialog(MessageBoxBase):
@@ -668,6 +668,7 @@ class Splitter(QFrame):
 class HomeInterface(SingleDirectionScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.setSmoothMode(SmoothMode.NO_SMOOTH)
         self.view = QWidget(self)
         self.vBoxLayout = QVBoxLayout(self.view)
         self.filter_tags = []
@@ -969,6 +970,7 @@ class ProtocolInterface(SingleDirectionScrollArea):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.setSmoothMode(SmoothMode.NO_SMOOTH)
         self.view = QWidget(self)
         self.vBoxLayout = QVBoxLayout(self.view)
         self.setup_ui()
