@@ -1055,6 +1055,10 @@ class UDPToolApp(FluentWindow):
         self.addSubInterface(self.home_interface, FIF.HOME, "Control Center")
         self.addSubInterface(self.protocol_interface, QIcon(resource_path("icons/database.svg")), "Protocol Library")
         
+        # Hide back button and menu button
+        self.navigationInterface.setBackButtonVisible(False)
+        self.navigationInterface.setMenuButtonVisible(False)
+        
         self.refresh_protocols()
 
     def paintEvent(self, e):
