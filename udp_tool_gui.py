@@ -72,11 +72,15 @@ class ProtocolEditDialog(MessageBoxBase):
         
         # Right Side: Type Mapper
         self.mapper_table = TableWidget()
-        self.mapper_table.setColumnCount(2)
-        self.mapper_table.setHorizontalHeaderLabels(["Key/Index", "Type"])
+        self.mapper_table.setColumnCount(4)
+        self.mapper_table.setHorizontalHeaderLabels(["Key/Index", "Type", "Min/From", "Max/To"])
         self.mapper_table.setFixedHeight(250)
         self.mapper_table.horizontalHeader().setStretchLastSection(True)
         self.mapper_table.verticalHeader().hide()
+        self.mapper_table.setColumnWidth(0, 120)
+        self.mapper_table.setColumnWidth(1, 80)
+        self.mapper_table.setColumnWidth(2, 90)
+        self.mapper_table.setColumnWidth(3, 90)
         
         self.content_layout.addWidget(self.dataInput, 1)
         self.content_layout.addWidget(self.mapper_table, 1)
@@ -135,14 +139,29 @@ class ProtocolEditDialog(MessageBoxBase):
         combo = ComboBox()
         combo.addItems(self.type_options)
         
-        # Restore saved type if available
-        saved_type = self.current_mapping.get(key, "Any")
+        # Random Range Inputs
+        from_input = LineEdit()
+        from_input.setPlaceholderText("From")
+        to_input = LineEdit()
+        to_input.setPlaceholderText("To")
+        
+        # Restore saved type and range if available
+        mapping_data = self.current_mapping.get(key, "Any")
+        if isinstance(mapping_data, dict):
+            saved_type = mapping_data.get("type", "Any")
+            from_input.setText(str(mapping_data.get("from", "")))
+            to_input.setText(str(mapping_data.get("to", "")))
+        else:
+            saved_type = mapping_data
+            
         if saved_type in self.type_options:
             combo.setCurrentText(saved_type)
         else:
             combo.setCurrentText("Any")
             
         self.mapper_table.setCellWidget(row, 1, combo)
+        self.mapper_table.setCellWidget(row, 2, from_input)
+        self.mapper_table.setCellWidget(row, 3, to_input)
 
     def validate_and_accept(self):
         data = self.get_data()
@@ -182,16 +201,44 @@ class ProtocolEditDialog(MessageBoxBase):
         mapping = json.loads(data['mapping']) if data['mapping'] else {}
         errors = []
         
+        # Validate Range Inputs (ensure they are numbers if type is Int/Double)
+        for key, m_info in mapping.items():
+            v_type = m_info.get("type")
+            v_from = m_info.get("from")
+            v_to = m_info.get("to")
+            
+            if v_type in ["Int", "Double"]:
+                try:
+                    if v_from: float(v_from)
+                    if v_to: float(v_to)
+                except ValueError:
+                    errors.append(f"Key '{key}': Range values must be numeric for {v_type}")
+
         if isinstance(json_obj, dict):
             for key, val in json_obj.items():
-                expected = mapping.get(str(key), "Any")
+                m_info = mapping.get(str(key), {})
+                expected = m_info.get("type", "Any")
                 if expected == "Any": continue
                 
                 valid = True
-                if expected == "Int":
-                    if not isinstance(val, int) or isinstance(val, bool): valid = False
+                # If randomization is set, skip initial type check as it will be replaced anyway
+                if m_info.get("from") and m_info.get("to"):
+                    valid = True
+                elif expected == "Int":
+                    # Allow integers, whole floats, or numeric strings
+                    if isinstance(val, (int, float)) and not isinstance(val, bool):
+                        if isinstance(val, float) and not val.is_integer():
+                            valid = False
+                    else:
+                        try:
+                            v = float(val)
+                            if not v.is_integer(): valid = False
+                        except: valid = False
                 elif expected == "Double":
-                    if not isinstance(val, (int, float)) or isinstance(val, bool): valid = False
+                    # Allow any numeric type or numeric strings
+                    if not (isinstance(val, (int, float)) and not isinstance(val, bool)):
+                        try: float(val)
+                        except: valid = False
                 elif expected == "String":
                     if not isinstance(val, str): valid = False
                 elif expected == "Bool":
@@ -208,14 +255,29 @@ class ProtocolEditDialog(MessageBoxBase):
         elif isinstance(json_obj, list):
             for i, val in enumerate(json_obj):
                 key = f"[{i}]"
-                expected = mapping.get(key, "Any")
+                m_info = mapping.get(key, {})
+                expected = m_info.get("type", "Any")
                 if expected == "Any": continue
                 
                 valid = True
-                if expected == "Int":
-                    if not isinstance(val, int) or isinstance(val, bool): valid = False
+                # If randomization is set, skip initial type check as it will be replaced anyway
+                if m_info.get("from") and m_info.get("to"):
+                    valid = True
+                elif expected == "Int":
+                    # Allow integers, whole floats, or numeric strings
+                    if isinstance(val, (int, float)) and not isinstance(val, bool):
+                        if isinstance(val, float) and not val.is_integer():
+                            valid = False
+                    else:
+                        try:
+                            v = float(val)
+                            if not v.is_integer(): valid = False
+                        except: valid = False
                 elif expected == "Double":
-                    if not isinstance(val, (int, float)) or isinstance(val, bool): valid = False
+                    # Allow any numeric type or numeric strings
+                    if not (isinstance(val, (int, float)) and not isinstance(val, bool)):
+                        try: float(val)
+                        except: valid = False
                 elif expected == "String":
                     if not isinstance(val, str): valid = False
                 elif expected == "Bool":
@@ -230,8 +292,8 @@ class ProtocolEditDialog(MessageBoxBase):
                     errors.append(f"Index {i}: Expected {expected}, got {actual}")
 
         if errors:
-            msg = "Type Mismatch Detected:\n\n" + "\n".join(errors) + "\n\nPlease fix your JSON or change the types."
-            self.show_warning("Type Error", msg)
+            msg = "Validation Errors:\n\n" + "\n".join(errors) + "\n\nPlease fix your inputs."
+            self.show_warning("Validation Error", msg)
             return
 
         self.accept()
@@ -252,8 +314,14 @@ class ProtocolEditDialog(MessageBoxBase):
         for row in range(self.mapper_table.rowCount()):
             key = self.mapper_table.item(row, 0).text()
             combo = self.mapper_table.cellWidget(row, 1)
-            if combo:
-                mapping[key] = combo.currentText()
+            from_input = self.mapper_table.cellWidget(row, 2)
+            to_input = self.mapper_table.cellWidget(row, 3)
+            if combo and from_input and to_input:
+                mapping[key] = {
+                    "type": combo.currentText(),
+                    "from": from_input.text().strip(),
+                    "to": to_input.text().strip()
+                }
 
         return {
             "name": self.nameInput.text().strip(),
@@ -732,7 +800,16 @@ class HomeInterface(SingleDirectionScrollArea):
         self.target_tag_container = AnimatedTagContainer(self.sender_card, enable_ani=False)
         s_layout.addWidget(self.target_tag_container)
 
-        s_layout.addWidget(StrongBodyLabel("Message Payload"))
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(StrongBodyLabel("Message Payload"))
+        self.active_protocol_label = CaptionLabel("", self.sender_card)
+        self.active_protocol_label.setStyleSheet("color: #0078d4; font-weight: bold;")
+        self.active_protocol_label.setVisible(False)
+        header_layout.addSpacing(10)
+        header_layout.addWidget(self.active_protocol_label)
+        header_layout.addStretch()
+        s_layout.addLayout(header_layout)
+
         self.payload_container = FontAdjustableTextEdit(self.sender_card)
         self.payload_container.text_edit.setPlaceholderText(r'e.g. {"cmd":"ping","data":0}')
         self.payload_container.setMinimumHeight(140)
@@ -744,6 +821,7 @@ class HomeInterface(SingleDirectionScrollArea):
         self.save_btn.clicked.connect(self.on_save_clicked)
         self.format_btn = PushButton(FIF.CODE, "Format JSON", self.sender_card)
         self.format_btn.clicked.connect(self.toggle_payload_format)
+        self.random_send_btn = PushButton(FIF.SYNC, "Random Send", self.sender_card)
         self.send_once_btn = PushButton(FIF.SEND, "Send Now", self.sender_card)
         self.start_send_btn = PrimaryPushButton(FIF.PLAY, "Start Loop", self.sender_card)
         btn_layout.addStretch()
@@ -751,12 +829,16 @@ class HomeInterface(SingleDirectionScrollArea):
         btn_layout.addSpacing(8)
         btn_layout.addWidget(self.format_btn)
         btn_layout.addSpacing(8)
+        btn_layout.addWidget(self.random_send_btn)
+        btn_layout.addSpacing(8)
         btn_layout.addWidget(self.send_once_btn)
         btn_layout.addSpacing(8)
         btn_layout.addWidget(self.start_send_btn)
         s_layout.addLayout(btn_layout)
         self.vBoxLayout.addWidget(self.sender_card)
         self.vBoxLayout.setStretchFactor(self.sender_card, 1)
+
+        self.current_mapping = {} # Store mapping for randomization
 
         self.resizer = Splitter(self.sender_card, self.view)
         self.vBoxLayout.addWidget(self.resizer)
@@ -964,7 +1046,7 @@ class HomeInterface(SingleDirectionScrollArea):
             except: pass
 
 class ProtocolInterface(SingleDirectionScrollArea):
-    protocol_selected = pyqtSignal(str)
+    protocol_selected = pyqtSignal(str, str, object)
     start_loop_send = pyqtSignal(str, int, float)
     stop_loop_send = pyqtSignal(str)
 
@@ -1035,13 +1117,12 @@ class ProtocolInterface(SingleDirectionScrollArea):
             else: action_btn.setIcon(FIF.SYNC); self.stop_loop_send.emit(name)
         action_btn.clicked.connect(lambda: on_action_toggled(action_btn.isChecked()))
         send_btn = ToolButton(FIF.SEND, btn_widget); send_btn.setToolTip(f"Send Once to Port {port}"); send_btn.clicked.connect(lambda: self.window().send_custom_data(data, port))
-        use_btn = ToolButton(FIF.PLAY, btn_widget); use_btn.setToolTip("Apply to Sender"); use_btn.clicked.connect(lambda: self.protocol_selected.emit(data))
-        
         mapping = None
         if mapping_str:
             try: mapping = json.loads(mapping_str)
             except: pass
             
+        use_btn = ToolButton(FIF.PLAY, btn_widget); use_btn.setToolTip("Apply to Sender"); use_btn.clicked.connect(lambda: self.protocol_selected.emit(data, name, mapping))
         edit_btn = ToolButton(FIF.EDIT, btn_widget); edit_btn.setToolTip("Edit Protocol"); edit_btn.clicked.connect(lambda: self.on_edit_clicked(row, name, port, data, proto_type, freq, mapping))
         del_btn = ToolButton(FIF.DELETE, btn_widget); del_btn.setToolTip("Delete"); del_btn.clicked.connect(lambda: self.on_delete_clicked(name))
         btn_layout.addWidget(action_btn); btn_layout.addWidget(send_btn); btn_layout.addWidget(use_btn); btn_layout.addWidget(edit_btn); btn_layout.addWidget(del_btn)
@@ -1128,6 +1209,7 @@ class UDPToolApp(FluentWindow):
 
         hi = self.home_interface
         hi.send_once_btn.clicked.connect(self.send_packet)
+        hi.random_send_btn.clicked.connect(lambda: self.send_packet(is_random=True))
         hi.start_send_btn.clicked.connect(self.toggle_send_loop)
         hi.start_recv_btn.clicked.connect(self.toggle_receiver)
         hi.detect_btn.clicked.connect(self.detect_devices)
@@ -1182,8 +1264,20 @@ class UDPToolApp(FluentWindow):
         if name in self.loop_timers: self.loop_timers[name].stop()
         timer = QTimer(self)
         protocols = self.db.get_all_protocols()
-        data = next((p['data'] for p in protocols if p['name'] == name), "")
-        timer.timeout.connect(lambda: self.send_custom_data(data, port, show_notification=False))
+        p = next((p for p in protocols if p['name'] == name), None)
+        if not p: return
+        
+        data = p['data']
+        mapping = {}
+        if p.get('mapping'):
+            try: mapping = json.loads(p['mapping'])
+            except: pass
+
+        def send_task():
+            send_data = self._randomize_data(data, mapping)
+            self.send_custom_data(send_data, port, show_notification=False)
+
+        timer.timeout.connect(send_task)
         timer.start(int(1000 / freq))
         self.loop_timers[name] = timer
         self.show_toast("Loop Started", f"Sending '{name}' at {freq}Hz")
@@ -1191,7 +1285,20 @@ class UDPToolApp(FluentWindow):
     def stop_protocol_loop(self, name):
         if name in self.loop_timers: self.loop_timers[name].stop(); del self.loop_timers[name]; self.show_toast("Loop Stopped", f"Stopped sending '{name}'")
 
-    def apply_protocol(self, data): self.home_interface.payload_container.text_edit.setPlainText(data); self.switchTo(self.home_interface); self.show_toast("Applied", "Protocol content loaded")
+    def apply_protocol(self, data, name, mapping=None): 
+        self.home_interface.payload_container.text_edit.setPlainText(data)
+        self.home_interface.current_mapping = mapping if mapping else {}
+        self.home_interface.active_protocol_label.setText(f"{name} random send")
+        self.home_interface.active_protocol_label.setVisible(True)
+        
+        # Update loop button text
+        if self.home_interface.current_mapping:
+            self.home_interface.start_send_btn.setText("Start Random Loop")
+        else:
+            self.home_interface.start_send_btn.setText("Start Loop")
+            
+        self.switchTo(self.home_interface)
+        self.show_toast("Applied", "Protocol content and mapping loaded")
     def save_protocol(self, name, data, port=5005, proto_type='send', freq=1.0, mapping=None): 
         self.db.save_protocol(name, data, port, proto_type, freq, mapping)
         self.refresh_protocols()
@@ -1217,10 +1324,52 @@ class UDPToolApp(FluentWindow):
         self.home_interface.save_config()
         self.show_toast("Success", f"Found {len(ips)} potential target devices")
 
-    def send_packet(self): 
+    def _randomize_data(self, data_str, mapping):
+        try:
+            import random
+            obj = json.loads(data_str)
+            if not mapping: return data_str
+            
+            def process_value(val, m_data):
+                if not isinstance(m_data, dict): return val
+                v_type = m_data.get("type", "Any")
+                v_from = m_data.get("from", "").strip()
+                v_to = m_data.get("to", "").strip()
+                
+                try:
+                    if v_type == "Int":
+                        if v_from and v_to:
+                            return random.randint(int(v_from), int(v_to))
+                    elif v_type == "Double":
+                        if v_from and v_to:
+                            return round(random.uniform(float(v_from), float(v_to)), 4)
+                    elif v_type == "Bool":
+                        return random.choice([True, False])
+                except: pass
+                return val
+
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    if k in mapping:
+                        obj[k] = process_value(v, mapping[k])
+            elif isinstance(obj, list):
+                for i in range(len(obj)):
+                    key = f"[{i}]"
+                    if key in mapping:
+                        obj[i] = process_value(obj[i], mapping[key])
+            
+            return json.dumps(obj)
+        except:
+            return data_str
+
+    def send_packet(self, is_random=False): 
         is_manual = not self.send_timer.isActive()
         data = self.home_interface.payload_container.text_edit.toPlainText()
         
+        # Auto-randomize if it's a loop and a mapping exists, or if specifically requested (Random Send)
+        if is_random or (not is_manual and self.home_interface.current_mapping):
+            data = self._randomize_data(data, self.home_interface.current_mapping)
+
         # Check active target IP tags
         active_ips = [tag.filter_text for tag in self.home_interface.target_ip_tags if tag.checkbox.isChecked()]
         
@@ -1309,7 +1458,13 @@ class UDPToolApp(FluentWindow):
         if self.send_timer.isActive(): 
             print("Sender Button Clicked: Current Status = STOP (Looping), switching to START")
             self.send_timer.stop()
-            btn.setText("Start Loop")
+            
+            # Restore correct text based on mapping
+            if self.home_interface.current_mapping:
+                btn.setText("Start Random Loop")
+            else:
+                btn.setText("Start Loop")
+                
             btn.setIcon(FIF.PLAY)
             self.set_button_status_color(btn, 'default')
             # Enable inputs when stopped
