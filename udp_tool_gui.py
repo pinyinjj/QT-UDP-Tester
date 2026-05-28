@@ -1,7 +1,7 @@
 import sys
 import os
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # PyInstaller 环境下获取资源路径
 def resource_path(relative_path):
