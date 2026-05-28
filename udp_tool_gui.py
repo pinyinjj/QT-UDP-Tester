@@ -19,9 +19,9 @@ import sqlite3
 import threading
 from datetime import datetime
 
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize, QPoint, QEvent, QPropertyAnimation, QEasingCurve
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize, QPoint, QEvent, QPropertyAnimation, QEasingCurve, QObject
 from PyQt5.QtGui import QFont, QTextCursor, QIcon, QColor, QPainter, QPen
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QTableWidgetItem
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QTableWidgetItem, QScrollBar
 
 from qfluentwidgets import (
     LineEdit, SpinBox, DoubleSpinBox, PrimaryPushButton, 
@@ -29,7 +29,7 @@ from qfluentwidgets import (
     CardWidget, FluentIcon as FIF, setTheme, Theme, setFont, InfoBar, InfoBarPosition,
     setThemeColor, FluentWindow, SingleDirectionScrollArea, TitleLabel,
     PrimaryToolButton, ToolButton, TransparentToolButton, FlowLayout, CheckBox,
-    TableWidget, MessageBox, MessageBoxBase, ComboBox, SmoothMode
+    TableWidget, MessageBox, MessageBoxBase, ComboBox, SmoothMode, ScrollBar
 )
 
 class ProtocolEditDialog(MessageBoxBase):
@@ -65,6 +65,10 @@ class ProtocolEditDialog(MessageBoxBase):
         
         # Left Side: JSON Input
         self.dataInput = TextEdit()
+        if hasattr(self.dataInput, 'scrollDelegate'):
+            self.dataInput.scrollDelegate.verticalSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+            self.dataInput.scrollDelegate.horizonSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+            
         self.dataInput.setPlainText(data)
         self.dataInput.setPlaceholderText("Protocol Content (JSON)")
         self.dataInput.setFixedHeight(250)
@@ -72,6 +76,10 @@ class ProtocolEditDialog(MessageBoxBase):
         
         # Right Side: Type Mapper
         self.mapper_table = TableWidget()
+        if hasattr(self.mapper_table, 'scrollDelagate'):
+            self.mapper_table.scrollDelagate.verticalSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+            self.mapper_table.scrollDelagate.horizonSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+            
         self.mapper_table.setColumnCount(4)
         self.mapper_table.setHorizontalHeaderLabels(["Key/Index", "Type", "Min/From", "Max/To"])
         self.mapper_table.setFixedHeight(250)
@@ -585,6 +593,13 @@ class FontAdjustableTableWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.table = TableWidget(self)
+        
+        # Disable internal smooth scroll animations while keeping wheel functionality
+        # Replicating the behavior of SingleDirectionScrollArea.setSmoothMode(SmoothMode.NO_SMOOTH)
+        if hasattr(self.table, 'scrollDelagate'):
+            self.table.scrollDelagate.verticalSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+            self.table.scrollDelagate.horizonSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+                    
         self.table.setWordWrap(False)
         self.table.verticalHeader().hide()
         self.current_font_size = 13
@@ -633,6 +648,13 @@ class FontAdjustableTextEdit(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.text_edit = TextEdit(self)
+        
+        # Disable internal smooth scroll animations while keeping wheel functionality
+        # Replicating the behavior of SingleDirectionScrollArea.setSmoothMode(SmoothMode.NO_SMOOTH)
+        if hasattr(self.text_edit, 'scrollDelegate'):
+            self.text_edit.scrollDelegate.verticalSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+            self.text_edit.scrollDelegate.horizonSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
+                    
         self.text_edit.setReadOnly(is_readonly)
         self.text_edit.setPlaceholderText(placeholder)
         self.current_font_size = 13
