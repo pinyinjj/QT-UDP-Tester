@@ -65,26 +65,30 @@ jobs:
         $version = "${{ needs.prepare.outputs.VERSION_NUMBER }}"
         (Get-Content udp_tool_gui.py) -replace 'VERSION = "1\.0\.0"', "VERSION = `"$version`"" | Set-Content udp_tool_gui.py
 
-    - name: Download UPX
+    - name: Build EXE (Onedir)
       run: |
-        New-Item -ItemType Directory -Force -Path $env:TEMP\upx
-        Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v3.96/upx-3.96-win64.zip" -OutFile $env:TEMP\upx.zip
-        Expand-Archive -Path $env:TEMP\upx.zip -DestinationPath $env:TEMP\upx -Force
-        Remove-Item $env:TEMP\upx.zip
-
-    - name: Build EXE
-      run: |
-        pyinstaller --noconsole --onefile --name "QT-UDP-Tester" `
+        # 使用 --onedir 代替 --onefile 以极大提升启动速度
+        # 移除 --upx-dir 因为解压开销会导致启动变慢
+        pyinstaller --noconsole --onedir --name "QT-UDP-Tester" `
           --hidden-import PyQt5.sip `
           --hidden-import PyQt5.QtSvg `
+          --exclude-module scipy `
+          --exclude-module numpy `
+          --exclude-module matplotlib `
+          --exclude-module pandas `
+          --exclude-module PIL `
           --add-data "icons;icons" `
-          --upx-dir=$env:TEMP\upx\upx-3.96-win64 udp_tool_gui.py
+          udp_tool_gui.py
 
-    - name: Upload EXE Artifact
+    - name: Zip Artifact
+      run: |
+        Compress-Archive -Path dist/QT-UDP-Tester/* -DestinationPath dist/QT-UDP-Tester-Windows.zip
+
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: windows-exe
-        path: dist/QT-UDP-Tester.exe
+        name: windows-zip
+        path: dist/QT-UDP-Tester-Windows.zip
 
   build-linux:
     needs: prepare
@@ -216,7 +220,7 @@ jobs:
     - name: Download Windows Artifact
       uses: actions/download-artifact@v4
       with:
-        name: windows-exe
+        name: windows-zip
         path: release-assets
 
     - name: Download Linux Artifacts
@@ -228,7 +232,7 @@ jobs:
 
     - name: Rename assets
       run: |
-        mv release-assets/QT-UDP-Tester.exe "release-assets/QT-UDP-Tester-${{ needs.prepare.outputs.VERSION }}-Windows.exe"
+        mv release-assets/QT-UDP-Tester-Windows.zip "release-assets/QT-UDP-Tester-${{ needs.prepare.outputs.VERSION }}-Windows.zip"
         if [ -f release-assets/qt-udp-tester-amd64.deb ]; then
           mv release-assets/qt-udp-tester-amd64.deb "release-assets/QT-UDP-Tester-${{ needs.prepare.outputs.VERSION }}-Linux-amd64.deb"
         fi
@@ -277,7 +281,7 @@ jobs:
         # Append installation instructions
         echo "" >> release-body.md
         echo "### Installation" >> release-body.md
-        echo "- **Windows**: Download and run the \`.exe\` file." >> release-body.md
+        echo "- **Windows**: Download and unzip the \`.zip\` file, then run \`QT-UDP-Tester.exe\`." >> release-body.md
         echo "- **Linux**: Install using \`apt\` to automatically resolve system dependencies:" >> release-body.md
         echo "  - **amd64**: \`sudo apt install ./QT-UDP-Tester-$current_tag-Linux-amd64.deb\`" >> release-body.md
         echo "  - **arm64**: \`sudo apt install ./QT-UDP-Tester-$current_tag-Linux-arm64.deb\`" >> release-body.md
@@ -292,7 +296,7 @@ jobs:
         tag_name: ${{ needs.prepare.outputs.VERSION }}
         name: ${{ needs.prepare.outputs.VERSION }}
         files: |
-          release-assets/QT-UDP-Tester-${{ needs.prepare.outputs.VERSION }}-Windows.exe
+          release-assets/QT-UDP-Tester-${{ needs.prepare.outputs.VERSION }}-Windows.zip
           release-assets/QT-UDP-Tester-${{ needs.prepare.outputs.VERSION }}-Linux-amd64.deb
           release-assets/QT-UDP-Tester-${{ needs.prepare.outputs.VERSION }}-Linux-arm64.deb
         body_path: release-body.md
