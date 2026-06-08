@@ -54,11 +54,6 @@ pip install -r requirements.txt
    - Protocols configured as `Receive` will automatically start listening on local ports.
 4. **View Adjustment**: Use the zoom buttons in the top right of the monitoring table to adjust fonts; drag the middle divider to adjust view proportions.
 
-## 📂 Project Structure
-* `udp_tool_gui.py`: Main program logic and GUI implementation.
-* `icons/`: UI resource files.
-* `requirements.txt`: Dependency list.
-* `~/.qt-udp-tester/`: Default storage path for config files and protocol database.
 
 ---
 *Professional, Fast, and Fluent.*

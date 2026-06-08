@@ -11,6 +11,7 @@ def resource_path(relative_path):
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
+# Import standard modules
 import socket
 import select
 import time
@@ -21,7 +22,7 @@ from datetime import datetime
 
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize, QPoint, QEvent, QPropertyAnimation, QEasingCurve, QObject
 from PyQt5.QtGui import QFont, QTextCursor, QIcon, QColor, QPainter, QPen
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QTableWidgetItem, QScrollBar
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QTableWidgetItem, QScrollBar, QSplitter
 
 from qfluentwidgets import (
     LineEdit, SpinBox, DoubleSpinBox, PrimaryPushButton, 
@@ -29,7 +30,7 @@ from qfluentwidgets import (
     CardWidget, FluentIcon as FIF, setTheme, Theme, setFont, InfoBar, InfoBarPosition,
     setThemeColor, FluentWindow, SingleDirectionScrollArea, TitleLabel,
     PrimaryToolButton, ToolButton, TransparentToolButton, FlowLayout, CheckBox,
-    TableWidget, MessageBox, MessageBoxBase, ComboBox, SmoothMode, ScrollBar
+    TableWidget, MessageBox, MessageBoxBase, ComboBox, ScrollBar
 )
 
 class ProtocolEditDialog(MessageBoxBase):
@@ -65,10 +66,6 @@ class ProtocolEditDialog(MessageBoxBase):
         
         # Left Side: JSON Input
         self.dataInput = TextEdit()
-        if hasattr(self.dataInput, 'scrollDelegate'):
-            self.dataInput.scrollDelegate.verticalSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
-            self.dataInput.scrollDelegate.horizonSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
-            
         self.dataInput.setPlainText(data)
         self.dataInput.setPlaceholderText("Protocol Content (JSON)")
         self.dataInput.setFixedHeight(250)
@@ -76,10 +73,6 @@ class ProtocolEditDialog(MessageBoxBase):
         
         # Right Side: Type Mapper
         self.mapper_table = TableWidget()
-        if hasattr(self.mapper_table, 'scrollDelagate'):
-            self.mapper_table.scrollDelagate.verticalSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
-            self.mapper_table.scrollDelagate.horizonSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
-            
         self.mapper_table.setColumnCount(4)
         self.mapper_table.setHorizontalHeaderLabels(["Key/Index", "Type", "Min/From", "Max/To"])
         self.mapper_table.setFixedHeight(250)
@@ -110,12 +103,21 @@ class ProtocolEditDialog(MessageBoxBase):
 
         self.type_options = ["Any", "String", "Int", "Double", "Bool", "Object", "Array"]
         self.current_mapping = mapping if mapping else {}
-        self.on_json_changed() # Initial parse
+        
+        # Debounce Timer for JSON Parsing
+        self.json_timer = QTimer(self)
+        self.json_timer.setSingleShot(True)
+        self.json_timer.timeout.connect(self.actual_on_json_changed)
+        
+        self.actual_on_json_changed() # Initial parse
 
         self.yesButton.clicked.disconnect()
         self.yesButton.clicked.connect(self.validate_and_accept)
 
     def on_json_changed(self):
+        self.json_timer.start(400) # 400ms delay
+
+    def actual_on_json_changed(self):
         text = self.dataInput.toPlainText().strip()
         if not text:
             self.mapper_table.setRowCount(0)
@@ -478,6 +480,54 @@ class ReceiverThread(QThread):
         self.running = False
         self.wait()
 
+class SenderThread(QThread):
+    def __init__(self, parent_app):
+        super().__init__()
+        self.app = parent_app
+        self.running = False
+        self.is_random = False
+        self.data = ""
+        self.mapping = {}
+        self.target_ips = []
+        self.target_port = 5005
+        self.freq = 1.0
+        self._lock = threading.Lock()
+
+    def update_params(self, data, mapping, target_ips, target_port, freq, is_random=False):
+        with self._lock:
+            self.data = data
+            self.mapping = mapping
+            self.target_ips = target_ips
+            self.target_port = target_port
+            self.freq = freq
+            self.is_random = is_random
+
+    def run(self):
+        self.running = True
+        while self.running:
+            with self._lock:
+                data = self.data
+                mapping = self.mapping
+                target_ips = self.target_ips
+                target_port = self.target_port
+                freq = self.freq
+                is_random = self.is_random
+
+            # Process randomization in background
+            if is_random or mapping:
+                data = self.app._randomize_data(data, mapping)
+
+            # Send to all target IPs
+            for ip in target_ips:
+                self.app.send_custom_data(data, target_port, ip, show_notification=False)
+
+            # Sleep to maintain frequency
+            time.sleep(1.0 / freq)
+
+    def stop(self):
+        self.running = False
+        self.wait()
+
 class DeviceScannerThread(QThread):
     devices_found = pyqtSignal(list)
     def run(self):
@@ -594,12 +644,6 @@ class FontAdjustableTableWidget(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.table = TableWidget(self)
         
-        # Disable internal smooth scroll animations while keeping wheel functionality
-        # Replicating the behavior of SingleDirectionScrollArea.setSmoothMode(SmoothMode.NO_SMOOTH)
-        if hasattr(self.table, 'scrollDelagate'):
-            self.table.scrollDelagate.verticalSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
-            self.table.scrollDelagate.horizonSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
-                    
         self.table.setWordWrap(False)
         self.table.verticalHeader().hide()
         self.current_font_size = 13
@@ -649,12 +693,6 @@ class FontAdjustableTextEdit(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.text_edit = TextEdit(self)
         
-        # Disable internal smooth scroll animations while keeping wheel functionality
-        # Replicating the behavior of SingleDirectionScrollArea.setSmoothMode(SmoothMode.NO_SMOOTH)
-        if hasattr(self.text_edit, 'scrollDelegate'):
-            self.text_edit.scrollDelegate.verticalSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
-            self.text_edit.scrollDelegate.horizonSmoothScroll.setSmoothMode(SmoothMode.NO_SMOOTH)
-                    
         self.text_edit.setReadOnly(is_readonly)
         self.text_edit.setPlaceholderText(placeholder)
         self.current_font_size = 13
@@ -694,83 +732,22 @@ class FontAdjustableTextEdit(QWidget):
         self.btn_container.move(self.width() - self.btn_container.width() - 2, 2)
         self.btn_container.raise_()
 
-class Splitter(QFrame):
-    def __init__(self, target, parent=None):
-        super().__init__(parent)
-        self.target = target
-        self.setCursor(Qt.SizeVerCursor)
-        self.setFixedHeight(12)  # Area for mouse hit
-        self.pressing = False
-        self.setMouseTracking(True)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.pressing = True
-            self.startY = event.globalY()
-            self.startH = self.target.height()
-            self.update()
-
-    def mouseMoveEvent(self, event):
-        if self.pressing:
-            delta = event.globalY() - self.startY
-            self.target.setFixedHeight(max(150, self.startH + delta))
-        self.update()
-
-    def mouseReleaseEvent(self, event):
-        self.pressing = False
-        self.update()
-
-    def enterEvent(self, event):
-        self.update()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.update()
-        super().leaveEvent(event)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        is_hover = self.underMouse() or self.pressing
-        
-        # 1. Background line (very subtle)
-        line_color = QColor(0, 0, 0, 15) if not is_hover else QColor(0, 120, 212, 60)
-        painter.setPen(QPen(line_color, 1))
-        painter.drawLine(0, self.height() // 2, self.width(), self.height() // 2)
-        
-        # 2. Fluent Pill Handle
-        handle_color = QColor(0, 120, 212) if is_hover else QColor(0, 0, 0, 40)
-        if self.pressing:
-            handle_color = QColor(0, 100, 180) # Darker blue on press
-            
-        painter.setBrush(handle_color)
-        painter.setPen(Qt.NoPen)
-        
-        # Handle animates slightly on hover
-        hw = 40 if is_hover else 32
-        hh = 4 if is_hover else 3
-        
-        x = (self.width() - hw) // 2
-        y = (self.height() - hh) // 2
-        painter.drawRoundedRect(x, y, hw, hh, hh / 2, hh / 2)
-
-class HomeInterface(SingleDirectionScrollArea):
+class HomeInterface(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.setSmoothMode(SmoothMode.NO_SMOOTH)
-        self.view = QWidget(self)
-        self.vBoxLayout = QVBoxLayout(self.view)
+        self.vBoxLayout = QVBoxLayout(self)
         self.filter_tags = []
         self.target_ip_tags = []
         self.setup_ui()
-        self.setWidget(self.view)
-        self.setWidgetResizable(True)
         self.setObjectName("homeInterface")
-        self.view.setObjectName("view")
-        self.setStyleSheet("#view, #homeInterface { background-color: transparent; border: none; }")
         self.payload_container.fontSizeChanged.connect(self.save_config)
         self.log_container.fontSizeChanged.connect(self.save_config)
+        
+        # Debounce Timer for Configuration Saving
+        self.save_timer = QTimer(self)
+        self.save_timer.setSingleShot(True)
+        self.save_timer.timeout.connect(self.actual_save_config)
+        
         self.load_config()
 
     def showEvent(self, event):
@@ -788,9 +765,13 @@ class HomeInterface(SingleDirectionScrollArea):
             self.add_filter_btn.move(x, y)
 
     def setup_ui(self):
-        self.vBoxLayout.setContentsMargins(0, 0, 0, 0)
+        self.vBoxLayout.setContentsMargins(36, 20, 36, 36)
         self.vBoxLayout.setSpacing(0)
-        self.sender_card = CardWidget(self.view)
+        
+        self.splitter = QSplitter(Qt.Vertical, self)
+        self.vBoxLayout.addWidget(self.splitter)
+
+        self.sender_card = CardWidget(self.splitter)
         s_layout = QVBoxLayout(self.sender_card)
         s_layout.setContentsMargins(20, 16, 20, 16)
         s_layout.setSpacing(12)
@@ -819,7 +800,7 @@ class HomeInterface(SingleDirectionScrollArea):
         
         s_layout.addLayout(cfg_layout)
 
-        self.target_tag_container = AnimatedTagContainer(self.sender_card, enable_ani=False)
+        self.target_tag_container = AnimatedTagContainer(self.sender_card, enable_ani=True)
         s_layout.addWidget(self.target_tag_container)
 
         header_layout = QHBoxLayout()
@@ -857,15 +838,8 @@ class HomeInterface(SingleDirectionScrollArea):
         btn_layout.addSpacing(8)
         btn_layout.addWidget(self.start_send_btn)
         s_layout.addLayout(btn_layout)
-        self.vBoxLayout.addWidget(self.sender_card)
-        self.vBoxLayout.setStretchFactor(self.sender_card, 1)
 
-        self.current_mapping = {} # Store mapping for randomization
-
-        self.resizer = Splitter(self.sender_card, self.view)
-        self.vBoxLayout.addWidget(self.resizer)
-
-        self.receiver_card = CardWidget(self.view)
+        self.receiver_card = CardWidget(self.splitter)
         r_layout = QVBoxLayout(self.receiver_card)
         r_layout.setContentsMargins(20, 16, 20, 16)
         r_layout.setSpacing(12)
@@ -873,10 +847,9 @@ class HomeInterface(SingleDirectionScrollArea):
         r_cfg = QHBoxLayout()
         self.listen_port = LineEdit(self.receiver_card)
         self.listen_port.setPlaceholderText("e.g. 5005, 5006, 5007, ...")
-        # 移除固定宽度，让其自适应增长
         self.filter_input = LineEdit(self.receiver_card)
         self.filter_input.setPlaceholderText("Add filter keyword...")
-        self.filter_input.setFixedWidth(180) # 固定 Filters 宽度，实现“缩短”
+        self.filter_input.setFixedWidth(180)
         self.add_filter_btn = TransparentToolButton(FIF.ADD, self.filter_input)
         self.add_filter_btn.setFixedSize(30, 30)
         self.add_filter_btn.setCursor(Qt.PointingHandCursor)
@@ -886,10 +859,10 @@ class HomeInterface(SingleDirectionScrollArea):
         self.start_recv_btn = PrimaryPushButton(FIF.WIFI, "Start Listening", self.receiver_card)
         self.start_recv_btn.setFixedWidth(160)
         r_cfg.addWidget(CaptionLabel("Listen Port"))
-        r_cfg.addWidget(self.listen_port, 1) # 设置 stretch=1，使其占据主要空间
+        r_cfg.addWidget(self.listen_port, 1)
         r_cfg.addSpacing(20)
         r_cfg.addWidget(CaptionLabel("Filters"))
-        r_cfg.addWidget(self.filter_input) # 固定宽度的组件
+        r_cfg.addWidget(self.filter_input)
         r_cfg.addSpacing(15)
         r_cfg.addWidget(self.start_recv_btn)
         r_layout.addLayout(r_cfg)
@@ -915,8 +888,11 @@ class HomeInterface(SingleDirectionScrollArea):
         r_ctrl.addStretch()
         r_ctrl.addWidget(self.clear_btn)
         r_layout.addLayout(r_ctrl)
-        self.vBoxLayout.addWidget(self.receiver_card)
-        self.vBoxLayout.setStretchFactor(self.receiver_card, 2)
+
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 2)
+
+        self.current_mapping = {} # Store mapping for randomization
 
         # 连接信号以实时保存配置
         self.target_ip.textChanged.connect(self.save_config)
@@ -1029,6 +1005,9 @@ class HomeInterface(SingleDirectionScrollArea):
             table.setRowHidden(i, not match)
 
     def save_config(self):
+        self.save_timer.start(500) # Save after 500ms of inactivity
+
+    def actual_save_config(self):
         config = {
             "filters": [tag.filter_text for tag in self.filter_tags], 
             "payload_font_size": self.payload_container.current_font_size, 
@@ -1074,7 +1053,6 @@ class ProtocolInterface(SingleDirectionScrollArea):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.setSmoothMode(SmoothMode.NO_SMOOTH)
         self.view = QWidget(self)
         self.vBoxLayout = QVBoxLayout(self.view)
         self.setup_ui()
@@ -1215,15 +1193,14 @@ class UDPToolApp(FluentWindow):
             }}
         """)
 
-        # 设置 1px 的内边距，确保子组件（如滚动条）不会盖住我们手动画的 1px 边框
-        self.setContentsMargins(1, 1, 1, 1)
-
-        self.loop_timers = {}
         self.db = DatabaseManager()
         self.home_interface = HomeInterface(self)
         self.protocol_interface = ProtocolInterface(self)
-        self.send_timer = QTimer()
-        self.send_timer.timeout.connect(self.send_packet)
+        
+        # New: Dedicated SenderThread for smooth UI
+        self.sender_thread = SenderThread(self)
+        
+        self.loop_timers = {}
         self.recv_thread = None
         self.scanner_thread = None
         self._shared_send_socket = None # Persistent socket
@@ -1243,34 +1220,20 @@ class UDPToolApp(FluentWindow):
         self.addSubInterface(self.protocol_interface, QIcon(resource_path("icons/database.svg")), "Protocol Library")
         
         # Center navigation items vertically in the sidebar
-        # 1. Set scrollArea stretch factor to 0 so it only takes needed space
         self.navigationInterface.panel.vBoxLayout.setStretchFactor(self.navigationInterface.panel.scrollArea, 0)
-        # 2. Add stretches to the main vertical layout to push items to the center
         self.navigationInterface.panel.vBoxLayout.insertStretch(0, 1)
         self.navigationInterface.panel.vBoxLayout.addStretch(1)
 
-        # Hide back button and menu button
+        # Restore animations
         self.navigationInterface.setReturnButtonVisible(False)
         self.navigationInterface.setMenuButtonVisible(False)
+        self.navigationInterface.setIndicatorAnimationEnabled(True)
         
-        # Keep drawer closed
-        self.navigationInterface.panel.setCollapsible(False)
+        # Keep drawer closed but allow collapsible if needed
+        self.navigationInterface.panel.setCollapsible(True)
         self.navigationInterface.panel.collapse()
         
         self.refresh_protocols()
-
-    def paintEvent(self, e):
-        """ 重写绘图事件，手动在最外层绘制一个 1px 的深灰色边框 """
-        super().paintEvent(e)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
-        
-        # 使用深灰色作为边框颜色，线宽设为 1px
-        pen = QPen(QColor(120, 120, 120), 1)
-        painter.setPen(pen)
-        
-        # 在 (0, 0) 绘制矩形框，对应 1px 的内边距
-        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
     def _get_send_socket(self):
         if self._shared_send_socket is None:
@@ -1341,16 +1304,23 @@ class UDPToolApp(FluentWindow):
         if not ips:
             self.show_toast("Info", "No other devices found in local network", True)
             return
-        for ip in ips:
-            self.home_interface.add_target_ip_tag(ip, save=False)
+        
+        # Batch add tags to prevent multiple layout updates
+        self.home_interface.target_tag_container.setUpdatesEnabled(False)
+        try:
+            for ip in ips:
+                self.home_interface.add_target_ip_tag(ip, save=False)
+        finally:
+            self.home_interface.target_tag_container.setUpdatesEnabled(True)
+            
         self.home_interface.save_config()
         self.show_toast("Success", f"Found {len(ips)} potential target devices")
 
     def _randomize_data(self, data_str, mapping):
+        if not mapping: return data_str
         try:
             import random
             obj = json.loads(data_str)
-            if not mapping: return data_str
             
             def process_value(val, m_data):
                 if not isinstance(m_data, dict): return val
@@ -1431,7 +1401,18 @@ class UDPToolApp(FluentWindow):
         func(title=title, content=content, orient=Qt.Horizontal, isClosable=True, position=InfoBarPosition.TOP, duration=1500, parent=self)
 
     def update_live_timer(self):
-        if self.send_timer.isActive(): self.send_timer.start(int(1000 / self.home_interface.send_freq.value()))
+        if self.sender_thread.isRunning():
+            hi = self.home_interface
+            active_ips = [tag.filter_text for tag in hi.target_ip_tags if tag.checkbox.isChecked()]
+            if not active_ips: active_ips = [hi.target_ip.text().strip()]
+            
+            self.sender_thread.update_params(
+                data=hi.payload_container.text_edit.toPlainText(),
+                mapping=hi.current_mapping,
+                target_ips=active_ips,
+                target_port=hi.target_port.value(),
+                freq=hi.send_freq.value()
+            )
 
     def set_button_status_color(self, btn, color_type):
         """
@@ -1475,43 +1456,44 @@ class UDPToolApp(FluentWindow):
         except socket.error:
             return False
 
-    def toggle_send_loop(self):
+    def toggle_send_loop(self, is_random=False):
         btn = self.home_interface.start_send_btn
-        if self.send_timer.isActive(): 
-            print("Sender Button Clicked: Current Status = STOP (Looping), switching to START")
-            self.send_timer.stop()
-            
-            # Restore correct text based on mapping
+        if self.sender_thread.isRunning(): 
+            self.sender_thread.stop()
             if self.home_interface.current_mapping:
                 btn.setText("Start Random Loop")
             else:
                 btn.setText("Start Loop")
-                
             btn.setIcon(FIF.PLAY)
             self.set_button_status_color(btn, 'default')
-            # Enable inputs when stopped
             self.home_interface.target_ip.setEnabled(True)
             self.home_interface.target_port.setEnabled(True)
         else: 
-            print("Sender Button Clicked: Current Status = START (Idle), switching to STOP")
-            ip = self.home_interface.target_ip.text().strip()
-            if not self.is_valid_ip(ip):
-                w = MessageBox(
-                    "Invalid IP Address", 
-                    f"The target IP address '{ip}' is not a valid IPv4 address.\n\nPlease enter a correct IP (e.g., 127.0.0.1 or 255.255.255.255) before starting the loop.", 
-                    self
-                )
-                w.cancelButton.hide()
-                w.exec()
-                return
+            hi = self.home_interface
+            ip = hi.target_ip.text().strip()
+            active_ips = [tag.filter_text for tag in hi.target_ip_tags if tag.checkbox.isChecked()]
+            
+            if not active_ips and not self.is_valid_ip(ip):
+                w = MessageBox("Invalid IP", f"'{ip}' is not a valid IPv4 address.", self)
+                w.cancelButton.hide(); w.exec(); return
 
-            self.send_timer.start(int(1000 / self.home_interface.send_freq.value()))
+            if not active_ips: active_ips = [ip]
+            
+            self.sender_thread.update_params(
+                data=hi.payload_container.text_edit.toPlainText(),
+                mapping=hi.current_mapping,
+                target_ips=active_ips,
+                target_port=hi.target_port.value(),
+                freq=hi.send_freq.value(),
+                is_random=is_random
+            )
+            self.sender_thread.start()
+            
             btn.setText("Stop Loop")
             btn.setIcon(FIF.PAUSE)
             self.set_button_status_color(btn, 'danger')
-            # Disable inputs when running
-            self.home_interface.target_ip.setEnabled(False)
-            self.home_interface.target_port.setEnabled(False)
+            hi.target_ip.setEnabled(False)
+            hi.target_port.setEnabled(False)
 
     def toggle_receiver(self):
         btn = self.home_interface.start_recv_btn
@@ -1564,6 +1546,12 @@ class UDPToolApp(FluentWindow):
         is_sorting = table.isSortingEnabled()
         table.setSortingEnabled(False)
         try:
+            # Batch remove old rows first if limit is reached
+            num_to_remove = table.rowCount() + len(packets) - self.MAX_LOG_ROWS
+            if num_to_remove > 0:
+                for _ in range(min(num_to_remove, table.rowCount())):
+                    table.removeRow(0)
+
             for timestamp, ip, port, local_port, data in packets:
                 try: text = data.decode('utf-8', errors='replace').strip()
                 except: text = data.hex(' ')
@@ -1582,10 +1570,6 @@ class UDPToolApp(FluentWindow):
                 if active_filters:
                     match = any(f in text.lower() for f in active_filters)
                     table.setRowHidden(row, not match)
-                
-                # Maintain MAX_LOG_ROWS
-                if table.rowCount() > self.MAX_LOG_ROWS:
-                    table.removeRow(0)
             
             table.scrollToBottom()
         finally:
